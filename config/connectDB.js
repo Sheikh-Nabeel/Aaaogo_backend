@@ -30,6 +30,9 @@ const connectDB = async () => {
   try {
     // Set mongoose options for better performance
     mongoose.set('strictQuery', false);
+    // Control autoIndex based on environment (disable in production for performance)
+    const isProduction = process.env.NODE_ENV === 'production';
+    mongoose.set('autoIndex', !isProduction);
     
     // Connect with connection pooling options
     await mongoose.connect(process.env.MONGO_URL, connectionOptions);

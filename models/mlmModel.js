@@ -835,4 +835,35 @@ mlmSchema.methods.autoAdjustSubDistributions = function() {
   }
 };
 
+// Indexes for admin reads and toggles
+mlmSchema.index({ name: 1 });
+mlmSchema.index({ isActive: 1 });
+mlmSchema.index({ createdAt: -1 });
+
+// Transactions indexes (frequently filtered by user, ride, and time)
+mlmSchema.index({ 'transactions.userId': 1 });
+mlmSchema.index({ 'transactions.rideId': 1 });
+mlmSchema.index({ 'transactions.timestamp': -1 });
+mlmSchema.index({ 'transactions.rideType': 1 });
+
+// Qualification points inside transactions
+mlmSchema.index({ 'transactions.qualificationPoints.tgp': -1 });
+mlmSchema.index({ 'transactions.qualificationPoints.pgp': -1 });
+
+// BBR Campaign participants and winners
+mlmSchema.index({ 'bbrCampaigns.current.isActive': 1 });
+mlmSchema.index({ 'bbrCampaigns.current.participants.userId': 1 });
+mlmSchema.index({ 'bbrCampaigns.past.winners.userId': 1 });
+
+// HLR configuration lookups
+mlmSchema.index({ 'hlrConfig.qualifiedMembers.userId': 1 });
+mlmSchema.index({ 'hlrConfig.qualifiedMembers.country': 1 });
+mlmSchema.index({ 'hlrConfig.qualifiedMembers.qualifiedAt': -1 });
+
+// Regional Ambassador queries
+mlmSchema.index({ 'regionalAmbassadorConfig.ambassadors.userId': 1 });
+mlmSchema.index({ 'regionalAmbassadorConfig.ambassadors.country': 1 });
+mlmSchema.index({ 'regionalAmbassadorConfig.ambassadors.rank': 1 });
+mlmSchema.index({ 'regionalAmbassadorConfig.ambassadors.totalEarnings': -1 });
+
 export default mongoose.model("MLM", mlmSchema);

@@ -121,4 +121,12 @@ const serviceSchema = new mongoose.Schema({
   }
 });
 
+// Indexes to optimize common queries and filters
+serviceSchema.index({ userId: 1 });
+serviceSchema.index({ status: 1, createdAt: -1 });
+serviceSchema.index({ serviceType: 1, status: 1 });
+serviceSchema.index({ businessCompanyName: 1 });
+serviceSchema.index({ tradeLicenseNumber: 1 });
+serviceSchema.index({ serviceArea: 1 });
+
 export default mongoose.model('Service', serviceSchema);

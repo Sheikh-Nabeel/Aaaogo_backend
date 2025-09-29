@@ -4,6 +4,8 @@ import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import connectDB from "./config/connectDB.js";
+import mongoose from "mongoose";
+import "./models/index.js";
 import cloudinary from "cloudinary";
 import { handleBookingEvents } from "./utils/socketHandlers.js";
 import { initializeDriverStatusSocket } from "./utils/driverStatusSocket.js";
@@ -47,6 +49,15 @@ initRoutes(app);
 const initializeServer = async () => {
   try {
     await connectDB();
+
+    // Sync indexes on startup (safe in dev/staging; consider off-peak for prod)
+    try {
+      const modelNames = mongoose.modelNames();
+      await Promise.all(modelNames.map((name) => mongoose.model(name).syncIndexes()));
+      console.log(`Synchronized indexes for ${modelNames.length} models`.green);
+    } catch (syncErr) {
+      console.warn(`Index sync warning: ${syncErr.message}`.yellow);
+    }
 
     // Generate performance report every 30 minutes
     // !! move this to cron job
