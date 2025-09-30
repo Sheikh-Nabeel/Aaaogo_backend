@@ -833,6 +833,11 @@ bookingSchema.index({ cancelledAt: 1 });
 bookingSchema.index({ resendAttempts: 1 });
 bookingSchema.index({ lastResendAt: 1 });
 bookingSchema.index({ "userFareIncreases.increasedAt": 1 });
+// Compound operational filters
+bookingSchema.index({ status: 1, createdAt: -1 });
+bookingSchema.index({ user: 1, status: 1, createdAt: -1 });
+bookingSchema.index({ driver: 1, status: 1, createdAt: -1 });
+bookingSchema.index({ serviceType: 1, serviceCategory: 1, createdAt: -1 });
 
 bookingSchema.pre("save", function (next) {
   this.updatedAt = Date.now();

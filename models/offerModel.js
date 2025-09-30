@@ -41,5 +41,8 @@ const offerSchema = new mongoose.Schema({
 offerSchema.index({ createdAt: -1 });
 offerSchema.index({ createdBy: 1 });
 offerSchema.index({ likes: 1 });
+// Improve retrieval and full-text search on offers
+offerSchema.index({ createdBy: 1, createdAt: -1 });
+offerSchema.index({ title: 'text', description: 'text' });
 
 export default mongoose.model("Offer", offerSchema);

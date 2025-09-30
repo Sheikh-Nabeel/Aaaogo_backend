@@ -55,5 +55,8 @@ postSchema.index({ createdAt: -1 });
 postSchema.index({ likes: 1 });
 postSchema.index({ "comments.author": 1 });
 postSchema.index({ "comments.createdAt": -1 });
+// Compound and text indexes for efficient feeds and search
+postSchema.index({ author: 1, createdAt: -1 });
+postSchema.index({ content: 'text', 'comments.content': 'text' });
 
 export default mongoose.model("Post", postSchema);

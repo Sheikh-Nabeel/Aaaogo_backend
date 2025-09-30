@@ -128,5 +128,8 @@ serviceSchema.index({ serviceType: 1, status: 1 });
 serviceSchema.index({ businessCompanyName: 1 });
 serviceSchema.index({ tradeLicenseNumber: 1 });
 serviceSchema.index({ serviceArea: 1 });
+// Additional compound and text search for services
+serviceSchema.index({ serviceType: 1, serviceArea: 1, status: 1 });
+serviceSchema.index({ businessCompanyName: 'text', listOfServices: 'text' });
 
 export default mongoose.model('Service', serviceSchema);

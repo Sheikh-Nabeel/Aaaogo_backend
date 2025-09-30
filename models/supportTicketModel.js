@@ -161,6 +161,10 @@ supportTicketSchema.index({ ticketId: 1 });
 supportTicketSchema.index({ createdAt: -1 });
 supportTicketSchema.index({ priority: 1, status: 1 });
 supportTicketSchema.index({ category: 1 });
+// Common operational filters and search
+supportTicketSchema.index({ user: 1, status: 1, createdAt: -1 });
+supportTicketSchema.index({ category: 1, status: 1, createdAt: -1 });
+supportTicketSchema.index({ subject: 'text', description: 'text', tags: 'text' });
 
 // Pre-save middleware to update resolution times
 supportTicketSchema.pre("save", function (next) {

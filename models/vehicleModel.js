@@ -201,6 +201,9 @@ vehicleSchema.index({ status: 1 });
 vehicleSchema.index({ serviceType: 1 });
 vehicleSchema.index({ serviceCategory: 1 });
 vehicleSchema.index({ vehicleType: 1 });
+// Common marketplace filters
+vehicleSchema.index({ serviceType: 1, serviceCategory: 1, vehicleType: 1, status: 1, isActive: 1 });
+vehicleSchema.index({ userId: 1, status: 1, createdAt: -1 });
 
 export default mongoose.models.Vehicle ||
   mongoose.model("Vehicle", vehicleSchema);

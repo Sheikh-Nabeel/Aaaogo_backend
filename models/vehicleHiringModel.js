@@ -325,6 +325,9 @@ driverHiringSchema.index({ userId: 1, vehicleId: 1, approvalStatus: 1 });
 driverHiringSchema.index({ "driverApplications.driverId": 1 });
 driverHiringSchema.index({ "driverApplications.applicationStatus": 1 });
 driverHiringSchema.index({ selectedDriverId: 1 });
+// Operational filters
+driverHiringSchema.index({ approvalStatus: 1, createdAt: -1 });
+driverHiringSchema.index({ vehiclePlateNumber: 1 });
 
 export const VehicleRegistration =
   mongoose.models.VehicleRegistration ||
