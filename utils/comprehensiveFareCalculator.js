@@ -127,6 +127,7 @@ const calculateComprehensiveFare = async (bookingData) => {
       tripProgress = 0,
       estimatedDuration = 0,
       isNightTime: isNightTimeParam = false,
+      helper = false,
       isCancelled = false,
       cancellationReason = null
     } = bookingData;
@@ -138,6 +139,7 @@ const calculateComprehensiveFare = async (bookingData) => {
       nightCharges: 0,
       surgeCharges: 0,
       waitingCharges: 0,
+      helperCharges: 0,
       cancellationCharges: 0,
       vatAmount: 0,
       subtotal: 0,
@@ -322,14 +324,15 @@ const calculateComprehensiveFare = async (bookingData) => {
       fareBreakdown.breakdown.minimumFareApplied = true;
     }
     
-    // 3. Calculate night charges
-    if (pricingConfig.nightCharges.enabled && (isNightTimeParam || isNightTime(pricingConfig.nightCharges))) {
+    // 3. Calculate night charges (only by explicit flag, no time-based auto)
+    if (pricingConfig.nightCharges.enabled && isNightTimeParam) {
       const nightChargeFixed = pricingConfig.nightCharges.fixedAmount;
       const nightChargeMultiplied = fareBreakdown.subtotal * (pricingConfig.nightCharges.multiplier - 1);
       
       // Use the higher of fixed amount or multiplier
       fareBreakdown.nightCharges = Math.max(nightChargeFixed, nightChargeMultiplied);
       fareBreakdown.breakdown.nightChargeType = nightChargeFixed > nightChargeMultiplied ? 'fixed' : 'multiplier';
+      fareBreakdown.breakdown.nightChargeApplied = true;
     }
     
     // 4. Calculate surge pricing
@@ -346,17 +349,48 @@ const calculateComprehensiveFare = async (bookingData) => {
     if (waitingMinutes > 0) {
       fareBreakdown.waitingCharges = calculateWaitingCharges(waitingMinutes, pricingConfig.waitingCharges);
     }
+
+    // 6. Calculate helper charges
+    if (helper) {
+      // Add helper charges based on service type
+      if (serviceType === 'shifting & movers') {
+        // Helper charges for shifting & movers
+        fareBreakdown.helperCharges = 20; // Default helper charge
+        fareBreakdown.breakdown.helperCharges = {
+          type: 'shifting_helper',
+          amount: 20,
+          description: 'Loading/unloading helper'
+        };
+      } else if (serviceType === 'car recovery') {
+        // Helper charges for car recovery (if applicable)
+        fareBreakdown.helperCharges = 15; // Default helper charge for car recovery
+        fareBreakdown.breakdown.helperCharges = {
+          type: 'recovery_helper',
+          amount: 15,
+          description: 'Recovery assistance helper'
+        };
+      } else {
+        // Default helper charge for other services
+        fareBreakdown.helperCharges = 10;
+        fareBreakdown.breakdown.helperCharges = {
+          type: 'general_helper',
+          amount: 10,
+          description: 'General assistance helper'
+        };
+      }
+    }
     
-    // 6. Calculate cancellation charges (if applicable)
+    // 7. Calculate cancellation charges (if applicable)
     if (isCancelled) {
       fareBreakdown.cancellationCharges = calculateCancellationCharges(tripProgress, cancellationReason, pricingConfig.cancellationCharges);
     }
     
-    // 7. Calculate platform fee
+    // 8. Calculate platform fee
     const fareBeforePlatformFee = fareBreakdown.subtotal + 
                                   fareBreakdown.nightCharges + 
                                   fareBreakdown.surgeCharges + 
-                                  fareBreakdown.waitingCharges;
+                                  fareBreakdown.waitingCharges +
+                                  fareBreakdown.helperCharges;
     
     fareBreakdown.platformFee = (fareBeforePlatformFee * pricingConfig.platformFee.percentage) / 100;
     fareBreakdown.breakdown.platformFeeBreakdown = {
@@ -364,18 +398,19 @@ const calculateComprehensiveFare = async (bookingData) => {
       customerShare: (fareBreakdown.platformFee * pricingConfig.platformFee.customerShare) / pricingConfig.platformFee.percentage
     };
     
-    // 8. Calculate VAT
+    // 9. Calculate VAT (exclude platform fee from VAT base)
     if (pricingConfig.vat.enabled) {
-      const fareBeforeVAT = fareBeforePlatformFee + fareBreakdown.platformFee;
+      const fareBeforeVAT = fareBeforePlatformFee;
       fareBreakdown.vatAmount = (fareBeforeVAT * pricingConfig.vat.percentage) / 100;
     }
     
-    // 9. Calculate total fare
+    // 10. Calculate total fare charged to customer (exclude platform fee)
     fareBreakdown.totalFare = fareBreakdown.subtotal + 
                              fareBreakdown.nightCharges + 
                              fareBreakdown.surgeCharges + 
                              fareBreakdown.waitingCharges + 
-                             fareBreakdown.platformFee + 
+                             fareBreakdown.helperCharges +
+                             /* platform fee excluded from customer total */
                              fareBreakdown.vatAmount + 
                              fareBreakdown.cancellationCharges;
     

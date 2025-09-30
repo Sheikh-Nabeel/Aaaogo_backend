@@ -184,13 +184,15 @@ const calculateFareByServiceType = async (serviceType, vehicleType, distance, ro
   if (comprehensiveConfig && (serviceType === "car cab" || serviceType === "bike" || serviceType === "car recovery")) {
     // Use comprehensive fare calculation
     const bookingData = {
-      serviceType: serviceType.replace(' ', '_'),
+      serviceType: serviceType, // Keep original format
       vehicleType,
       distance: distanceInKm,
       routeType,
       demandRatio: additionalData.demandRatio || 1,
       waitingMinutes: additionalData.waitingMinutes || 0,
-      estimatedDuration: additionalData.estimatedDuration || 0
+      estimatedDuration: additionalData.estimatedDuration || 0,
+      isNightTime: additionalData.nightRide || false,
+      helper: additionalData.helper || false
     };
     
     const fareResult = await calculateComprehensiveFare(bookingData);
@@ -240,6 +242,9 @@ const getFareEstimation = asyncHandler(async (req, res) => {
     vehicleType,
     routeType = "one_way",
     distanceInMeters,
+    nightRide = false,
+    demandRatio = 1.0,
+    helper = false,
     serviceDetails = {},
     itemDetails = [],
     serviceOptions = {},
@@ -279,6 +284,14 @@ const getFareEstimation = asyncHandler(async (req, res) => {
   ) {
     return res.status(400).json({
       message: "Pickup and dropoff coordinates, addresses, service type, and distance are required",
+      token: req.cookies.token,
+    });
+  }
+
+  // Validate routeType
+  if (routeType && !["one_way", "two_way"].includes(routeType)) {
+    return res.status(400).json({
+      message: "Invalid routeType. Valid options are: one_way, two_way",
       token: req.cookies.token,
     });
   }
@@ -386,30 +399,50 @@ const getFareEstimation = asyncHandler(async (req, res) => {
        estimatedFare = fareData?.totalCalculatedFare || fareData?.totalFare || 0;
        fareResult = fareData;
     } else if (serviceType === "car recovery") {
+      // Convert distance to km (no doubling here - fare calculator handles route multiplier)
+      let finalDistance = distanceInMeters / 1000;
+
+      // Coerce demandRatio to a number (supports fractional strings like "1.2")
+      const demandRatioNum = (() => {
+        const v = typeof demandRatio === 'string' ? parseFloat(demandRatio) : demandRatio;
+        return Number.isFinite(v) && v > 0 ? v : 1;
+      })();
+
       const fareData = await calculateCarRecoveryFare({
         vehicleType: vehicleType,
         serviceCategory: serviceCategory,
-        distance: distanceInMeters / 1000,
-        serviceDetails,
-        routeType,
-        startTime: req.body.startTime ? new Date(req.body.startTime) : new Date(),
-        waitingMinutes: req.body.waitingMinutes || 0,
-        demandRatio: req.body.demandRatio || 1,
-        cityCode: req.body.cityCode || 'default'
+        distance: finalDistance,
+        serviceDetails: {
+          ...serviceDetails,
+          helper: helper
+        },
+        routeType: routeType === "two_way" ? "round_trip" : "one_way",
+        isNightTime: nightRide,
+        waitingMinutes: 0,
+        demandRatio: demandRatioNum,
+        cityCode: 'default'
       });
       estimatedFare = fareData?.totalCalculatedFare || fareData?.totalFare || 0;
       fareResult = fareData;
     } else {
-      // Use comprehensive fare calculation for car cab, bike, and car recovery
+      // Calculate distance based on route type for other services
+      let finalDistance = distanceInMeters;
+      if (routeType === "two_way") {
+        finalDistance = distanceInMeters * 2; // Double distance for round trip
+      }
+
+      // Use comprehensive fare calculation for car cab, bike, and other services
       fareResult = await calculateFareByServiceType(
         serviceType,
         vehicleType,
-        distanceInMeters,
-        routeType,
+        finalDistance,
+        routeType === "two_way" ? "round_trip" : "one_way",
         {
-          demandRatio: req.body.demandRatio || 1,
-          waitingMinutes: req.body.waitingMinutes || 0,
-          estimatedDuration: req.body.estimatedDuration || Math.ceil((distanceInMeters / 1000) / 40 * 60) // Estimate based on 40km/h average speed
+          demandRatio: demandRatio,
+          waitingMinutes: 0,
+          isNightTime: nightRide,
+          helper: helper,
+          estimatedDuration: Math.ceil((finalDistance / 1000) / 40 * 60) // Estimate based on 40km/h average speed
         }
       );
       

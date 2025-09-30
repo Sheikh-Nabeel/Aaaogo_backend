@@ -43,9 +43,11 @@ const getComprehensivePricing = async (req, res) => {
       .populate('lastUpdatedBy', 'name email');
     
     if (!config) {
-      return res.status(404).json({
-        success: false,
-        message: 'Comprehensive pricing configuration not found'
+      // Auto-create with model defaults if not present
+      const created = await ComprehensivePricing.create({});
+      return res.status(200).json({
+        success: true,
+        data: created
       });
     }
     
@@ -630,11 +632,14 @@ const bulkUpdatePricing = async (req, res) => {
     const updates = req.body;
     const adminId = req.user.id;
     
-    const config = await ComprehensivePricing.findOne({ isActive: true });
+    let config = await ComprehensivePricing.findOne({ isActive: true });
     if (!config) {
-      return res.status(404).json({
-        success: false,
-        message: 'Comprehensive pricing configuration not found'
+      // Create new config with provided updates as initial values
+      config = await ComprehensivePricing.create({ ...updates, lastUpdatedBy: adminId });
+      return res.status(200).json({
+        success: true,
+        message: 'Comprehensive pricing created successfully',
+        data: config
       });
     }
     

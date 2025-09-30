@@ -248,7 +248,8 @@ const calculateCarRecoveryFare = async (bookingData) => {
       distance, 
       serviceDetails, 
       routeType = 'one_way',
-      startTime = new Date(),
+      // Ignore actual clock; rely on explicit flag only
+      isNightTime = false,
       waitingMinutes = 0,
       demandRatio = 1,
       cityCode = 'default'
@@ -270,62 +271,116 @@ const calculateDynamicCarRecoveryFare = async (bookingData) => {
       distance, 
       serviceDetails, 
       routeType = 'one_way',
-      startTime = new Date(),
+      isNightTime = false,
       waitingMinutes = 0,
       demandRatio = 1,
       cityCode = 'default'
     } = bookingData;
     
-    // 1. Base Fare: Always apply AED 50 for first 6 km
-    const baseFare = 50;
+    // Get comprehensive pricing configuration
+    const ComprehensivePricing = (await import('../models/comprehensivePricingModel.js')).default;
+    const pricingConfig = await ComprehensivePricing.findOne({ isActive: true });
     
-    // 2. Per KM Rate: After 6 km, charge AED 7.5 per km
-    const perKmRate = 7.5;
-    const distanceFare = distance > 6 ? (distance - 6) * perKmRate : 0;
+    if (!pricingConfig || !pricingConfig.serviceTypes.carRecovery) {
+      throw new Error('Car recovery pricing configuration not found');
+    }
     
-    // 3. Minimum Fare: If total trip < 6 km → still charge AED 50 minimum
-    const subtotal = baseFare + distanceFare;
-    const minimumFare = 50;
+    const recoveryConfig = pricingConfig.serviceTypes.carRecovery;
+    
+    // 1. Base Fare: Use config value for first coverage km
+    const baseFare = recoveryConfig.baseFare.amount;
+    const coverageKm = recoveryConfig.baseFare.coverageKm;
+    
+    // 2. Per KM Rate: After coverage km, use config rate
+    const perKmRate = recoveryConfig.perKmRate.afterBaseCoverage;
+    const distanceFare = distance > coverageKm ? (distance - coverageKm) * perKmRate : 0;
+    
+    // 3. Apply route type multiplier for round trips
+    let routeMultiplier = 1;
+    if (routeType === 'round_trip' || routeType === 'two_way') {
+      routeMultiplier = 2; // Double the fare for round trips
+    }
+    
+    // 4. Minimum Fare: Use config minimum fare
+    const subtotal = (baseFare + distanceFare) * routeMultiplier;
+    const minimumFare = recoveryConfig.minimumFare * routeMultiplier;
     const adjustedSubtotal = Math.max(subtotal, minimumFare);
     
-    // 4. Platform Fee: Deduct 15% of total fare (7.5% driver, 7.5% customer)
-    const platformFeePercentage = 15;
+    // 4. Platform Fee: Use config percentage
+    const platformFeePercentage = recoveryConfig.platformFee.percentage;
     const platformFeeAmount = (adjustedSubtotal * platformFeePercentage) / 100;
-    const customerPlatformFee = platformFeeAmount * 0.5; // 7.5%
-    const driverPlatformFee = platformFeeAmount * 0.5; // 7.5%
+    const customerPlatformFee = platformFeeAmount * (recoveryConfig.platformFee.customerShare / recoveryConfig.platformFee.percentage);
+    const driverPlatformFee = platformFeeAmount * (recoveryConfig.platformFee.driverShare / recoveryConfig.platformFee.percentage);
     
-    // 5. Night Charges: If ride start time between 22:00–06:00 → add AED 10
-    const hour = startTime.getHours();
-    const isNightTime = hour >= 22 || hour < 6;
-    const nightCharges = isNightTime ? 10 : 0;
+    // 5. Night Charges: Use config values when explicitly flagged
+    let nightCharges = 0;
+    if (isNightTime && recoveryConfig.nightCharges.enabled) {
+      const nightChargeFixed = recoveryConfig.nightCharges.fixedAmount;
+      const nightChargeMultiplied = adjustedSubtotal * (recoveryConfig.nightCharges.multiplier - 1);
+      nightCharges = Math.max(nightChargeFixed, nightChargeMultiplied);
+    }
     
-    // 6. Surge Pricing: Based on demand/supply ratio
+    // 6. Surge Pricing: Use config surge pricing with support for fractional demand ratios
     let surgeMultiplier = 1;
     let surgeCharges = 0;
-    if (demandRatio >= 3) {
-      surgeMultiplier = 2.0; // 2.0x if demand = 3x cars
-    } else if (demandRatio >= 2) {
-      surgeMultiplier = 1.5; // 1.5x if demand = 2x cars
+    if (recoveryConfig.surgePricing.enabled && demandRatio > 1) {
+      const levelsAsc = [...(recoveryConfig.surgePricing.levels || [])]
+        .filter(l => typeof l.demandRatio === 'number' && typeof l.multiplier === 'number')
+        .sort((a, b) => a.demandRatio - b.demandRatio);
+
+      if (levelsAsc.length === 0) {
+        // No configured levels: fall back to using demandRatio directly as multiplier
+        surgeMultiplier = Math.max(1, demandRatio);
+      } else {
+        // If demandRatio is below the first level, interpolate between 1x at ratio=1 and first level
+        if (demandRatio <= levelsAsc[0].demandRatio) {
+          const r0 = 1;
+          const m0 = 1;
+          const r1 = levelsAsc[0].demandRatio;
+          const m1 = levelsAsc[0].multiplier;
+          const t = Math.max(0, Math.min(1, (demandRatio - r0) / (r1 - r0)));
+          surgeMultiplier = m0 + t * (m1 - m0);
+        } else {
+          // Find bracketing levels for interpolation
+          let chosen = levelsAsc[levelsAsc.length - 1].multiplier; // default to top multiplier
+          for (let i = 0; i < levelsAsc.length - 1; i++) {
+            const a = levelsAsc[i];
+            const b = levelsAsc[i + 1];
+            if (demandRatio >= a.demandRatio && demandRatio <= b.demandRatio) {
+              const t = (demandRatio - a.demandRatio) / (b.demandRatio - a.demandRatio);
+              chosen = a.multiplier + t * (b.multiplier - a.multiplier);
+              break;
+            }
+          }
+          surgeMultiplier = chosen;
+        }
+
+        // Admin-controlled snapping removed - use demand ratio directly
+      }
+
+      surgeMultiplier = Math.max(1, surgeMultiplier);
+      surgeCharges = (adjustedSubtotal + nightCharges) * (surgeMultiplier - 1);
     }
-    surgeCharges = (adjustedSubtotal + nightCharges) * (surgeMultiplier - 1);
     
-    // 7. City-wise Pricing: If trip >10 km in specific city → apply AED 5/km instead of default
+    // 7. City-wise Pricing: Use config city-wise adjustment
     let cityCharges = 0;
-    if (distance > 10 && cityCode !== 'default') {
-      const citySpecificRate = 5; // AED 5/km for city trips
+    if (recoveryConfig.perKmRate.cityWiseAdjustment.enabled && 
+        distance > recoveryConfig.perKmRate.cityWiseAdjustment.aboveKm && 
+        cityCode !== 'default') {
+      const citySpecificRate = recoveryConfig.perKmRate.cityWiseAdjustment.adjustedRate;
       cityCharges = distance * citySpecificRate;
     }
     
-    // 8. Waiting Charges: Free wait: 5 minutes, After 5 mins → AED 2/minute, Stop charging after AED 20 cap
-    const freeWaitMinutes = 5;
-    const waitingRatePerMinute = 2;
-    const maxWaitingCharges = 20;
+    // 8. Waiting Charges: Use config waiting charges
+    const freeWaitMinutes = recoveryConfig.waitingCharges.freeMinutes;
+    const waitingRatePerMinute = recoveryConfig.waitingCharges.perMinuteRate;
+    const maxWaitingCharges = recoveryConfig.waitingCharges.maximumCharge;
     let waitingCharges = 0;
     if (waitingMinutes > freeWaitMinutes) {
       waitingCharges = Math.min((waitingMinutes - freeWaitMinutes) * waitingRatePerMinute, maxWaitingCharges);
     }
     
-    // 9. Convenience Fee: Based on service type
+    // 9. Convenience Fee: Based on service type (+ helper if provided)
     let convenienceFee = 0;
     if (serviceCategory === 'winching services') {
       convenienceFee = 50; // AED 50 for winching services
@@ -336,14 +391,23 @@ const calculateDynamicCarRecoveryFare = async (bookingData) => {
     } else if (serviceCategory === 'specialized/heavy recovery') {
       convenienceFee = 75; // AED 75 for specialized/heavy recovery
     }
+
+    // Helper charge (runtime flag)
+    if (serviceDetails && serviceDetails.helper === true) {
+      convenienceFee += 15;
+    }
     
-    // 10. VAT: Apply country-based VAT on total fare
-    const vatRate = 5; // 5% VAT for UAE
+    // Apply route multiplier to convenience fee
+    convenienceFee = convenienceFee * routeMultiplier;
+    
+    // 10. VAT: Use config VAT rate
+    const vatRate = recoveryConfig.vat.enabled ? recoveryConfig.vat.percentage : 0;
     const subtotalBeforeVat = adjustedSubtotal + nightCharges + surgeCharges + cityCharges + waitingCharges + convenienceFee;
     const vatAmount = (subtotalBeforeVat * vatRate) / 100;
     
     // Calculate total fare
-    const totalFare = subtotalBeforeVat + vatAmount;
+    // Platform fee is deducted from provider earnings, not added to customer fare
+    const totalFare = subtotalBeforeVat + vatAmount; // platform fee excluded from customer total
     
     // 11. Refreshment Alert: Trigger if ride >20 km OR >30 minutes
     const refreshmentAlert = distance > 20 || (waitingMinutes + (distance * 2)) > 30; // Rough estimate for trip duration
@@ -358,6 +422,7 @@ const calculateDynamicCarRecoveryFare = async (bookingData) => {
       baseFare,
       distanceFare,
       minimumFare,
+      routeMultiplier,
       subtotal: adjustedSubtotal,
       nightCharges,
       surgeCharges,

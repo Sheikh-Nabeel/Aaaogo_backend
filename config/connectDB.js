@@ -7,8 +7,9 @@ const connectionOptions = {
   maxPoolSize: 10, // Maximum number of connections in the pool
   minPoolSize: 2,  // Minimum number of connections in the pool
   maxIdleTimeMS: 30000, // Close connections after 30 seconds of inactivity
-  serverSelectionTimeoutMS: 5000, // How long to try selecting a server
-  socketTimeoutMS: 45000, // How long a send or receive on a socket can take
+  serverSelectionTimeoutMS: 30000, // Increased timeout for server selection
+  socketTimeoutMS: 60000, // Increased socket timeout
+  connectTimeoutMS: 30000, // Connection timeout
   
   // Connection behavior
   bufferCommands: false, // Disable mongoose buffering
@@ -34,6 +35,9 @@ const connectDB = async () => {
     const isProduction = process.env.NODE_ENV === 'production';
     mongoose.set('autoIndex', !isProduction);
     
+    console.log("Attempting to connect to MongoDB...".yellow);
+    console.log("MongoDB URL:", process.env.MONGO_URL?.replace(/\/\/.*@/, '//***:***@')); // Hide credentials in logs
+    
     // Connect with connection pooling options
     await mongoose.connect(process.env.MONGO_URL, connectionOptions);
     
@@ -43,9 +47,28 @@ const connectDB = async () => {
     const db = mongoose.connection.db;
     console.log(`Connection pool configured: maxPoolSize=${connectionOptions.maxPoolSize}, minPoolSize=${connectionOptions.minPoolSize}`.cyan);
     
+    // Handle connection events
+    mongoose.connection.on('error', (err) => {
+      console.error('MongoDB connection error:', err.message.red);
+    });
+    
+    mongoose.connection.on('disconnected', () => {
+      console.log('MongoDB disconnected'.yellow);
+    });
+    
+    mongoose.connection.on('reconnected', () => {
+      console.log('MongoDB reconnected'.green);
+    });
+    
   } catch (err) {
     console.error("MongoDB connection error:", err.message.red);
-    process.exit(1); // Exit process with failure
+    console.error("Full error:", err);
+    
+    // Don't exit immediately, let the app try to continue
+    console.log("Retrying connection in 5 seconds...".yellow);
+    setTimeout(() => {
+      connectDB();
+    }, 5000);
   }
 };
 
