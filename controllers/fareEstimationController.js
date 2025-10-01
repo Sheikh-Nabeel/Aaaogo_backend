@@ -4,6 +4,7 @@ import { calculateComprehensiveFare } from '../utils/comprehensiveFareCalculator
 import PricingConfig from '../models/pricingModel.js';
 import ComprehensivePricing from '../models/comprehensivePricingModel.js';
 import User from '../models/userModel.js';
+import FareEstimation from '../models/fareEstimationModel.js';
 import { calculateDistance } from '../utils/distanceCalculator.js';
 
 // Find qualified drivers and vehicles for fare estimation
@@ -512,10 +513,28 @@ const getFareEstimation = asyncHandler(async (req, res) => {
       responseData.alerts = fareResult.alerts;
     }
 
+    // Persist estimation snapshot and return id
+    const estimationDoc = await FareEstimation.create({
+      userId,
+      serviceType,
+      serviceCategory: serviceCategory || null,
+      vehicleType,
+      routeType,
+      pickupLocation,
+      dropoffLocation,
+      originalFare: responseData.estimatedFare,
+      currency: responseData.currency,
+      adjustmentSettings: responseData.adjustmentSettings,
+      responseData,
+      demandRatio,
+      nightRide,
+      helper
+    });
+
     res.status(200).json({
       success: true,
       message: "Fare estimation calculated successfully",
-      data: responseData,
+      data: { ...responseData, fareEstimationId: estimationDoc._id },
       token: req.cookies.token
     });
 
@@ -530,28 +549,38 @@ const getFareEstimation = asyncHandler(async (req, res) => {
   }
 });
 
-// Adjust fare estimation
+// Adjust fare estimation (pre-booking)
 const adjustFareEstimation = asyncHandler(async (req, res) => {
   const {
-    originalFare,
+    fareEstimationId,
     adjustedFare,
-    serviceType
+    reason,
+    adjustmentType = "user_requested" // user_requested, driver_suggested, admin_override
   } = req.body;
   
   const userId = req.user._id;
 
-  if (!originalFare || !adjustedFare || !serviceType) {
+  if (!fareEstimationId || !adjustedFare) {
     return res.status(400).json({
-      message: "Original fare, adjusted fare, and service type are required",
+      message: "fareEstimationId and adjustedFare are required",
       token: req.cookies.token,
     });
   }
 
   try {
+    // Load stored estimation
+    const estimation = await FareEstimation.findById(fareEstimationId);
+    if (!estimation || estimation.userId.toString() !== userId.toString()) {
+      return res.status(404).json({
+        message: "Fare estimation not found",
+        token: req.cookies.token,
+      });
+    }
+
     // Get fare adjustment settings
-    const fareSettings = await getFareAdjustmentSettings(serviceType);
+    const fareSettings = await getFareAdjustmentSettings(estimation.serviceType);
     
-    if (!fareSettings.enableUserFareAdjustment) {
+    if (!fareSettings.enableUserFareAdjustment && adjustmentType === "user_requested") {
       return res.status(403).json({
         message: "Fare adjustment is currently disabled by admin",
         token: req.cookies.token,
@@ -560,26 +589,54 @@ const adjustFareEstimation = asyncHandler(async (req, res) => {
 
     // Validate adjustment is within allowed range
     const adjustmentPercentage = fareSettings.allowedAdjustmentPercentage;
-    const minAllowedFare = originalFare * (1 - adjustmentPercentage / 100);
-    const maxAllowedFare = originalFare * (1 + adjustmentPercentage / 100);
+    const originalFare = estimation.originalFare;
+    const minAllowedFare = estimation.adjustmentSettings?.minFare ?? (originalFare * (1 - adjustmentPercentage / 100));
+    const maxAllowedFare = estimation.adjustmentSettings?.maxFare ?? (originalFare * (1 + adjustmentPercentage / 100));
 
     if (adjustedFare < minAllowedFare || adjustedFare > maxAllowedFare) {
       return res.status(400).json({
         message: `Adjusted fare must be between ${minAllowedFare.toFixed(2)} and ${maxAllowedFare.toFixed(2)} AED (±${adjustmentPercentage}% of original fare)`,
+        adjustmentRange: {
+          minFare: Math.round(minAllowedFare * 100) / 100,
+          maxFare: Math.round(maxAllowedFare * 100) / 100,
+          allowedPercentage: adjustmentPercentage
+        },
         token: req.cookies.token,
       });
     }
 
+    // Calculate adjustment details
+    const adjustmentAmount = adjustedFare - originalFare;
+    const adjustmentPercentageActual = (adjustmentAmount / originalFare) * 100;
+
+    // Prepare response data
+    // Build full stored response with adjusted fare applied
+    const fullResponse = { ...estimation.responseData };
+    fullResponse.estimatedFare = Math.round(adjustedFare * 100) / 100;
+    if (fullResponse.fareBreakdown && typeof fullResponse.fareBreakdown === 'object') {
+      fullResponse.fareBreakdown.totalFare = fullResponse.estimatedFare;
+    }
+    fullResponse.adjustmentSettings = {
+      ...fullResponse.adjustmentSettings,
+      minFare: Math.round(minAllowedFare * 100) / 100,
+      maxFare: Math.round(maxAllowedFare * 100) / 100,
+      allowedPercentage: adjustmentPercentage,
+    };
+
+    const meta = {
+      originalFare: Math.round(originalFare * 100) / 100,
+      adjustedFare: Math.round(adjustedFare * 100) / 100,
+      adjustmentAmount: Math.round(adjustmentAmount * 100) / 100,
+      adjustmentPercentage: Math.round(adjustmentPercentageActual * 100) / 100,
+      adjustmentType,
+      reason: reason || null,
+      fareEstimationId: estimation._id,
+    };
+
     res.status(200).json({
       success: true,
-      message: "Fare adjustment validated successfully",
-      data: {
-        originalFare: Math.round(originalFare * 100) / 100,
-        adjustedFare: Math.round(adjustedFare * 100) / 100,
-        adjustmentAmount: Math.round((adjustedFare - originalFare) * 100) / 100,
-        adjustmentPercentage: Math.round(((adjustedFare - originalFare) / originalFare) * 100 * 100) / 100,
-        currency: "AED"
-      },
+      message: "Fare adjusted successfully",
+      data: { ...fullResponse, adjustmentMeta: meta },
       token: req.cookies.token
     });
 
@@ -594,8 +651,167 @@ const adjustFareEstimation = asyncHandler(async (req, res) => {
   }
 });
 
+// Get fare adjustment range for a specific fare
+const getFareAdjustmentRange = asyncHandler(async (req, res) => {
+  const { originalFare, serviceType } = req.body;
+  
+  if (!originalFare || !serviceType) {
+    return res.status(400).json({
+      message: "Original fare and service type are required",
+      token: req.cookies.token,
+    });
+  }
+
+  try {
+    // Get fare adjustment settings
+    const fareSettings = await getFareAdjustmentSettings(serviceType);
+    
+    const adjustmentPercentage = fareSettings.allowedAdjustmentPercentage;
+    const minAllowedFare = originalFare * (1 - adjustmentPercentage / 100);
+    const maxAllowedFare = originalFare * (1 + adjustmentPercentage / 100);
+
+    res.status(200).json({
+      success: true,
+      message: "Fare adjustment range calculated successfully",
+      data: {
+        originalFare: Math.round(originalFare * 100) / 100,
+        adjustmentRange: {
+          minFare: Math.round(minAllowedFare * 100) / 100,
+          maxFare: Math.round(maxAllowedFare * 100) / 100,
+          allowedPercentage: adjustmentPercentage,
+          adjustmentAmount: {
+            min: Math.round((minAllowedFare - originalFare) * 100) / 100,
+            max: Math.round((maxAllowedFare - originalFare) * 100) / 100
+          }
+        },
+        currency: "AED",
+        canAdjustFare: fareSettings.enableUserFareAdjustment,
+        settings: fareSettings
+      },
+      token: req.cookies.token
+    });
+
+  } catch (error) {
+    console.error('Fare adjustment range error:', error);
+    res.status(500).json({
+      success: false,
+      message: "Error calculating fare adjustment range",
+      error: error.message,
+      token: req.cookies.token
+    });
+  }
+});
+
+// Bulk fare adjustment validation (pre-booking)
+const validateBulkFareAdjustments = asyncHandler(async (req, res) => {
+  const { adjustments } = req.body;
+  
+  if (!Array.isArray(adjustments) || adjustments.length === 0) {
+    return res.status(400).json({
+      message: "Adjustments array is required",
+      token: req.cookies.token,
+    });
+  }
+
+  try {
+    const results = [];
+    const errors = [];
+
+    for (const adjustment of adjustments) {
+      const { originalFare, adjustedFare, serviceType, reason, adjustmentType = "user_requested" } = adjustment;
+      
+      if (!originalFare || !adjustedFare || !serviceType) {
+        errors.push({
+          index: adjustments.indexOf(adjustment),
+          error: "Original fare, adjusted fare, and service type are required"
+        });
+        continue;
+      }
+
+      try {
+        // Get fare adjustment settings
+        const fareSettings = await getFareAdjustmentSettings(serviceType);
+        
+        if (!fareSettings.enableUserFareAdjustment && adjustmentType === "user_requested") {
+          errors.push({
+            index: adjustments.indexOf(adjustment),
+            error: "Fare adjustment is currently disabled by admin"
+          });
+          continue;
+        }
+
+        // Validate adjustment is within allowed range
+        const adjustmentPercentage = fareSettings.allowedAdjustmentPercentage;
+        const minAllowedFare = originalFare * (1 - adjustmentPercentage / 100);
+        const maxAllowedFare = originalFare * (1 + adjustmentPercentage / 100);
+
+        if (adjustedFare < minAllowedFare || adjustedFare > maxAllowedFare) {
+          errors.push({
+            index: adjustments.indexOf(adjustment),
+            error: `Adjusted fare must be between ${minAllowedFare.toFixed(2)} and ${maxAllowedFare.toFixed(2)} AED`,
+            adjustmentRange: {
+              minFare: Math.round(minAllowedFare * 100) / 100,
+              maxFare: Math.round(maxAllowedFare * 100) / 100
+            }
+          });
+          continue;
+        }
+
+        // Valid adjustment
+        const adjustmentAmount = adjustedFare - originalFare;
+        const adjustmentPercentageActual = (adjustmentAmount / originalFare) * 100;
+
+        results.push({
+          index: adjustments.indexOf(adjustment),
+          originalFare: Math.round(originalFare * 100) / 100,
+          adjustedFare: Math.round(adjustedFare * 100) / 100,
+          adjustmentAmount: Math.round(adjustmentAmount * 100) / 100,
+          adjustmentPercentage: Math.round(adjustmentPercentageActual * 100) / 100,
+          currency: "AED",
+          reason: reason || null,
+          adjustmentType,
+          serviceType,
+          valid: true
+        });
+
+      } catch (error) {
+        errors.push({
+          index: adjustments.indexOf(adjustment),
+          error: error.message
+        });
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Validated ${results.length} adjustments successfully`,
+      data: {
+        validAdjustments: results,
+        invalidAdjustments: errors,
+        summary: {
+          total: adjustments.length,
+          valid: results.length,
+          invalid: errors.length
+        }
+      },
+      token: req.cookies.token
+    });
+
+  } catch (error) {
+    console.error('Bulk fare adjustment validation error:', error);
+    res.status(500).json({
+      success: false,
+      message: "Error validating bulk fare adjustments",
+      error: error.message,
+      token: req.cookies.token
+    });
+  }
+});
+
 export {
   getFareEstimation,
   adjustFareEstimation,
+  getFareAdjustmentRange,
+  validateBulkFareAdjustments,
   findQualifiedDriversForEstimation
 };
