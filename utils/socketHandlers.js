@@ -1,4 +1,4 @@
-// Minimal socket handlers: only room join events
+// Socket handlers: room join events + location events
 export const handleBookingEvents = (socket, io) => {
   const normalizeId = (val) => {
     try {
@@ -80,6 +80,224 @@ export const handleBookingEvents = (socket, io) => {
     console.log(`Joined room: driver_${providedIdStr} (driver: ${authIdStr}, socket: ${socket.id})`.green);
     socket.emit("room_joined", payload);
     if (typeof ack === 'function') ack({ ok: true, ...payload });
+  });
+
+  // ===== LOCATION EVENTS =====
+  
+  // Update user location (real-time)
+  socket.on("update_location", async (locationData, ack) => {
+    try {
+      if (!socket.user || !socket.user._id) {
+        const err = { message: "Authentication required" };
+        socket.emit("error", err);
+        if (typeof ack === 'function') ack({ ok: false, error: err.message });
+        return;
+      }
+
+      console.log('Received location data:', locationData);
+      console.log('Location data type:', typeof locationData);
+      
+      // Handle multiple formats: stringified array, direct array, or object with coordinates property
+      let coordinates, accuracy, timestamp;
+      
+      if (Array.isArray(locationData)) {
+        // Direct array format: [longitude, latitude]
+        coordinates = locationData;
+        accuracy = null;
+        timestamp = new Date();
+      } else if (typeof locationData === 'string') {
+        // Stringified format: "[55.2708, 25.2048]" or "{coordinates: [55.2708, 25.2048]}" or "{coordinates: [55.2708, 25.2048]}"
+        try {
+          let parsed;
+          
+          // First try direct JSON parse
+          try {
+            parsed = JSON.parse(locationData);
+          } catch (jsonError) {
+            // If JSON parse fails, try to fix malformed JSON (missing quotes around property names)
+            const fixedJson = locationData.replace(/(\w+):/g, '"$1":');
+            parsed = JSON.parse(fixedJson);
+          }
+          
+          if (Array.isArray(parsed) && parsed.length === 2) {
+            // Stringified array format: "[55.2708, 25.2048]"
+            coordinates = parsed;
+            accuracy = null;
+            timestamp = new Date();
+          } else if (parsed && typeof parsed === 'object' && parsed.coordinates) {
+            // Stringified object format: "{coordinates: [55.2708, 25.2048]}" or '{"coordinates": [55.2708, 25.2048]}'
+            coordinates = parsed.coordinates;
+            accuracy = parsed.accuracy || null;
+            timestamp = parsed.timestamp || new Date();
+          } else {
+            throw new Error('Invalid format');
+          }
+        } catch (error) {
+          const err = { message: "Invalid stringified format. Expected '[longitude, latitude]' or '{coordinates: [longitude, latitude]}'" };
+          socket.emit("error", err);
+          if (typeof ack === 'function') ack({ ok: false, error: err.message });
+          return;
+        }
+      } else if (locationData && typeof locationData === 'object') {
+        // Object format: { coordinates: [longitude, latitude], accuracy, timestamp }
+        coordinates = locationData.coordinates;
+        accuracy = locationData.accuracy;
+        timestamp = locationData.timestamp;
+      } else {
+        const err = { message: "Invalid location data format. Expected array [longitude, latitude], string '[longitude, latitude]', or object {coordinates: [longitude, latitude]}" };
+        socket.emit("error", err);
+        if (typeof ack === 'function') ack({ ok: false, error: err.message });
+        return;
+      }
+      
+      console.log('Coordinates type:', typeof coordinates);
+      console.log('Coordinates:', coordinates);
+      
+      // Validate coordinates
+      if (!coordinates || !Array.isArray(coordinates) || coordinates.length !== 2) {
+        const err = { message: "Invalid coordinates format. Expected [longitude, latitude]" };
+        console.error('Coordinates validation failed:', { coordinates, isArray: Array.isArray(coordinates), length: coordinates?.length });
+        socket.emit("error", err);
+        if (typeof ack === 'function') ack({ ok: false, error: err.message });
+        return;
+      }
+
+      // Convert coordinates to numbers if they're strings
+      const longitude = parseFloat(coordinates[0]);
+      const latitude = parseFloat(coordinates[1]);
+      
+      // Check if conversion was successful
+      if (isNaN(longitude) || isNaN(latitude)) {
+        const err = { message: "Invalid coordinate values. Must be valid numbers" };
+        console.error('Coordinate conversion failed:', { longitude, latitude, original: coordinates });
+        socket.emit("error", err);
+        if (typeof ack === 'function') ack({ ok: false, error: err.message });
+        return;
+      }
+      
+      // Validate coordinate ranges
+      if (longitude < -180 || longitude > 180 || latitude < -90 || latitude > 90) {
+        const err = { message: "Invalid coordinate values" };
+        socket.emit("error", err);
+        if (typeof ack === 'function') ack({ ok: false, error: err.message });
+        return;
+      }
+
+      // Import User model
+      const User = (await import('../models/userModel.js')).default;
+      
+      // Use converted coordinates
+      const finalCoordinates = [longitude, latitude];
+      
+      // Update user location in database
+      await User.findByIdAndUpdate(socket.user._id, {
+        currentLocation: {
+          type: 'Point',
+          coordinates: finalCoordinates
+        },
+        lastActiveAt: new Date()
+      });
+
+      // Broadcast location update to relevant rooms
+      const locationUpdate = {
+        userId: socket.user._id,
+        userRole: socket.user.role,
+        location: {
+          coordinates: finalCoordinates,
+          accuracy: accuracy || null,
+          timestamp: timestamp || new Date()
+        },
+        lastActive: new Date()
+      };
+
+      // Broadcast to all connected clients (real-time location sharing)
+      io.emit('location_updated', locationUpdate);
+      
+      // Also broadcast to specific rooms based on user role
+      if (socket.user.role === 'driver') {
+        io.to('drivers_online').emit('driver_location_updated', locationUpdate);
+      } else if (socket.user.role === 'customer') {
+        io.to('customers_online').emit('customer_location_updated', locationUpdate);
+      }
+
+      console.log(`Location updated for ${socket.user.role} ${socket.user._id}: [${longitude}, ${latitude}]`.cyan);
+      
+      // Send acknowledgment
+      if (typeof ack === 'function') {
+        ack({ 
+          ok: true, 
+          message: "Location updated successfully",
+          location: locationUpdate.location
+        });
+      }
+
+    } catch (error) {
+      console.error('Error updating location:', error);
+      const err = { message: "Failed to update location" };
+      socket.emit("error", err);
+      if (typeof ack === 'function') ack({ ok: false, error: err.message });
+    }
+  });
+
+  // Get user location (real-time)
+  socket.on("get_location", async (targetUserId, ack) => {
+    try {
+      if (!socket.user || !socket.user._id) {
+        const err = { message: "Authentication required" };
+        socket.emit("error", err);
+        if (typeof ack === 'function') ack({ ok: false, error: err.message });
+        return;
+      }
+
+      // Use provided userId or default to authenticated user
+      const userId = targetUserId || socket.user._id;
+      
+      // Import User model
+      const User = (await import('../models/userModel.js')).default;
+      
+      // Get user location from database
+      const user = await User.findById(userId).select('currentLocation lastActiveAt role isActive driverStatus');
+      
+      if (!user) {
+        const err = { message: "User not found" };
+        socket.emit("error", err);
+        if (typeof ack === 'function') ack({ ok: false, error: err.message });
+        return;
+      }
+
+      // Check if user is online (active within last 5 minutes)
+      const isOnline = user.lastActiveAt && (new Date() - new Date(user.lastActiveAt)) < 5 * 60 * 1000;
+      
+      const locationData = {
+        userId: user._id,
+        userRole: user.role,
+        location: user.currentLocation,
+        lastActive: user.lastActiveAt,
+        isOnline: isOnline,
+        isActive: user.isActive,
+        driverStatus: user.driverStatus || null
+      };
+
+      // Send location data
+      socket.emit('location_data', locationData);
+      
+      // Send acknowledgment
+      if (typeof ack === 'function') {
+        ack({ 
+          ok: true, 
+          message: "Location retrieved successfully",
+          data: locationData
+        });
+      }
+
+      console.log(`Location retrieved for user ${userId} (${user.role}): ${isOnline ? 'Online' : 'Offline'}`.cyan);
+
+    } catch (error) {
+      console.error('Error getting location:', error);
+      const err = { message: "Failed to get location" };
+      socket.emit("error", err);
+      if (typeof ack === 'function') ack({ ok: false, error: err.message });
+    }
   });
 };
 
