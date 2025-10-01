@@ -122,6 +122,7 @@ const calculateComprehensiveFare = async (bookingData) => {
       vehicleType,
       distance, // in km
       routeType = 'one_way',
+      serviceCategory, // Add serviceCategory parameter
       demandRatio = 1,
       waitingMinutes = 0,
       tripProgress = 0,
@@ -177,51 +178,46 @@ const calculateComprehensiveFare = async (bookingData) => {
     } else if (normalizedServiceType === 'car_recovery' || serviceType === 'car recovery') {
       const recoveryConfig = pricingConfig.serviceTypes.carRecovery;
       
-      // Check if it's winching, roadside assistance, or key unlocker services
-      const isWinchingOrRoadside = vehicleType && (
-        recoveryConfig.serviceTypes.winching.subCategories[vehicleType] ||
-        recoveryConfig.serviceTypes.roadsideAssistance.subCategories[vehicleType] ||
-        vehicleType === 'keyUnlocker'
-      );
-      
-      if (isWinchingOrRoadside) {
-        // For winching, roadside assistance, and key unlocker services
-        // Apply minimum charges for driver arriving + convenience fee
-        let convenienceFee = 50; // default
-        
-        if (recoveryConfig.serviceTypes.winching.subCategories[vehicleType]) {
-          convenienceFee = recoveryConfig.serviceTypes.winching.subCategories[vehicleType].convenienceFee;
-        } else if (recoveryConfig.serviceTypes.roadsideAssistance.subCategories[vehicleType]) {
-          convenienceFee = recoveryConfig.serviceTypes.roadsideAssistance.subCategories[vehicleType].convenienceFee;
-        } else if (vehicleType === 'keyUnlocker') {
-          convenienceFee = recoveryConfig.serviceTypes.keyUnlockerServices.convenienceFee;
+      // Use category-specific configuration if serviceCategory is provided
+      if (serviceCategory && recoveryConfig.categories) {
+        // Map serviceCategory to the correct category key
+        let categoryKey = null;
+        if (serviceCategory === 'towing services') {
+          categoryKey = 'towingServices';
+        } else if (serviceCategory === 'winching services') {
+          categoryKey = 'winchingServices';
+        } else if (serviceCategory === 'roadside assistance') {
+          categoryKey = 'roadsideAssistance';
+        } else if (serviceCategory === 'specialized/heavy recovery') {
+          categoryKey = 'specializedHeavyRecovery';
         }
         
-        baseFare = recoveryConfig.serviceTypes.winching.minimumChargesForDriverArriving + convenienceFee;
-        fareBreakdown.baseFare = baseFare;
-        fareBreakdown.distanceFare = 0;
-        fareBreakdown.breakdown.convenienceFee = convenienceFee;
-        fareBreakdown.breakdown.minimumDriverCharges = recoveryConfig.serviceTypes.winching.minimumChargesForDriverArriving;
+        if (categoryKey && recoveryConfig.categories[categoryKey]) {
+          const categoryConfig = recoveryConfig.categories[categoryKey];
+          baseFare = categoryConfig.baseFare.amount;
+          perKmRate = categoryConfig.perKmRate.afterBaseCoverage;
+          
+          // Override pricing config with category-specific values
+          pricingConfig.baseFare.coverageKm = categoryConfig.baseFare.coverageKm;
+          pricingConfig.minimumFare = categoryConfig.minimumFare;
+          pricingConfig.platformFee = categoryConfig.platformFee;
+          pricingConfig.cancellationCharges = categoryConfig.cancellationCharges;
+          pricingConfig.waitingCharges = categoryConfig.waitingCharges;
+          pricingConfig.nightCharges = categoryConfig.nightCharges;
+          pricingConfig.surgePricing = categoryConfig.surgePricing;
+          pricingConfig.vat = categoryConfig.vat;
+          
+          // Store category-specific config for later use
+          fareBreakdown.breakdown.categoryConfig = categoryConfig;
+        } else {
+          // Fallback to general car recovery config
+          baseFare = recoveryConfig.baseFare?.amount || 50;
+          perKmRate = recoveryConfig.perKmRate?.afterBaseCoverage || 7.5;
+        }
       } else {
-        // For all other car recovery types (except roadside assistance and winching)
-        // Apply standard car recovery pricing structure
-        baseFare = recoveryConfig.baseFare.amount;
-        perKmRate = recoveryConfig.perKmRate.afterBaseCoverage;
-        
-        // Override base fare coverage for car recovery
-        pricingConfig.baseFare.coverageKm = recoveryConfig.baseFare.coverageKm;
-        
-        // Override minimum fare for car recovery
-        pricingConfig.minimumFare = recoveryConfig.minimumFare;
-        
-        // Override platform fee for car recovery
-        pricingConfig.platformFee = recoveryConfig.platformFee;
-        
-        // Override cancellation charges for car recovery
-        pricingConfig.cancellationCharges = recoveryConfig.cancellationCharges;
-        
-        // Override waiting charges for car recovery
-        pricingConfig.waitingCharges = recoveryConfig.waitingCharges;
+        // Fallback to general car recovery config
+        baseFare = recoveryConfig.baseFare?.amount || 50;
+        perKmRate = recoveryConfig.perKmRate?.afterBaseCoverage || 7.5;
         
         // Override night charges for car recovery
         pricingConfig.nightCharges = recoveryConfig.nightCharges;
@@ -352,7 +348,7 @@ const calculateComprehensiveFare = async (bookingData) => {
 
     // 6. Calculate helper charges
     if (helper) {
-      // Add helper charges based on service type
+      // Add helper charges based on service type and category
       if (serviceType === 'shifting & movers') {
         // Helper charges for shifting & movers
         fareBreakdown.helperCharges = 20; // Default helper charge
@@ -362,11 +358,18 @@ const calculateComprehensiveFare = async (bookingData) => {
           description: 'Loading/unloading helper'
         };
       } else if (serviceType === 'car recovery') {
-        // Helper charges for car recovery (if applicable)
-        fareBreakdown.helperCharges = 15; // Default helper charge for car recovery
+        // Helper charges for car recovery - use category-specific config
+        let helperCharge = 15; // Default helper charge for car recovery
+        
+        // Use category-specific helper charges if available
+        if (fareBreakdown.breakdown.categoryConfig && fareBreakdown.breakdown.categoryConfig.helperCharges) {
+          helperCharge = fareBreakdown.breakdown.categoryConfig.helperCharges.amount;
+        }
+        
+        fareBreakdown.helperCharges = helperCharge;
         fareBreakdown.breakdown.helperCharges = {
           type: 'recovery_helper',
-          amount: 15,
+          amount: helperCharge,
           description: 'Recovery assistance helper'
         };
       } else {
@@ -377,6 +380,50 @@ const calculateComprehensiveFare = async (bookingData) => {
           amount: 10,
           description: 'General assistance helper'
         };
+      }
+    }
+    
+    // 6.5. Calculate convenience fee for car recovery categories
+    let convenienceFee = 0;
+    if (serviceType === 'car recovery' && fareBreakdown.breakdown.categoryConfig) {
+      const categoryConfig = fareBreakdown.breakdown.categoryConfig;
+      
+      // Map vehicleType to sub-service key
+      let subServiceKey = null;
+      if (vehicleType) {
+        // Convert vehicle type to sub-service key format
+        subServiceKey = vehicleType.replace(/\s+/g, '').replace(/[^a-zA-Z0-9]/g, '');
+        // Handle specific mappings
+        if (vehicleType === 'on-road winching') subServiceKey = 'onRoadWinching';
+        if (vehicleType === 'off-road winching') subServiceKey = 'offRoadWinching';
+        if (vehicleType === 'flatbed towing') subServiceKey = 'flatbedTowing';
+        if (vehicleType === 'wheel lift towing') subServiceKey = 'wheelLiftTowing';
+        if (vehicleType === 'battery jump start') subServiceKey = 'batteryJumpStart';
+        if (vehicleType === 'fuel delivery') subServiceKey = 'fuelDelivery';
+        if (vehicleType === 'luxury & exotic car recovery') subServiceKey = 'luxuryExoticCarRecovery';
+        if (vehicleType === 'accident & collision recovery') subServiceKey = 'accidentCollisionRecovery';
+        if (vehicleType === 'heavy-duty vehicle recovery') subServiceKey = 'heavyDutyVehicleRecovery';
+        if (vehicleType === 'basement pull-out') subServiceKey = 'basementPullOut';
+      }
+      
+      // Check for sub-service convenience fee first
+      if (subServiceKey && categoryConfig.subServices && categoryConfig.subServices[subServiceKey]) {
+        convenienceFee = categoryConfig.subServices[subServiceKey].convenienceFee || 0;
+        fareBreakdown.breakdown.convenienceFee = {
+          amount: convenienceFee,
+          description: `Sub-service convenience fee for ${vehicleType}`,
+          subService: subServiceKey,
+          vehicleType: vehicleType
+        };
+      } else {
+        // Fallback to category-level convenience fee
+        convenienceFee = categoryConfig.convenienceFee || 0;
+        if (convenienceFee > 0) {
+          fareBreakdown.breakdown.convenienceFee = {
+            amount: convenienceFee,
+            description: 'Category convenience fee'
+          };
+        }
       }
     }
     
@@ -400,7 +447,7 @@ const calculateComprehensiveFare = async (bookingData) => {
     
     // 9. Calculate VAT (exclude platform fee from VAT base)
     if (pricingConfig.vat.enabled) {
-      const fareBeforeVAT = fareBeforePlatformFee;
+      const fareBeforeVAT = fareBeforePlatformFee + convenienceFee;
       fareBreakdown.vatAmount = (fareBeforeVAT * pricingConfig.vat.percentage) / 100;
     }
     
@@ -410,6 +457,7 @@ const calculateComprehensiveFare = async (bookingData) => {
                              fareBreakdown.surgeCharges + 
                              fareBreakdown.waitingCharges + 
                              fareBreakdown.helperCharges +
+                             convenienceFee + // Add convenience fee
                              /* platform fee excluded from customer total */
                              fareBreakdown.vatAmount + 
                              fareBreakdown.cancellationCharges;

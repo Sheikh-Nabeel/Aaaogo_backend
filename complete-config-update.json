@@ -1,0 +1,705 @@
+{
+  "serviceTypes": {
+    "carRecovery": {
+      "enabled": true,
+      "categories": {
+        "towingServices": {
+          "enabled": true,
+          "label": "Towing Services",
+          "imageHint": "Tow truck carrying a sedan on flatbed",
+          "baseFare": {
+            "amount": 50,
+            "coverageKm": 6
+          },
+          "perKmRate": {
+            "afterBaseCoverage": 7.5,
+            "cityWiseAdjustment": {
+              "enabled": true,
+              "aboveKm": 10,
+              "adjustedRate": 5
+            }
+          },
+          "minimumFare": 50,
+          "platformFee": {
+            "percentage": 15,
+            "driverShare": 7.5,
+            "customerShare": 7.5
+          },
+          "cancellationCharges": {
+            "beforeArrival": 2,
+            "after50PercentDistance": 5,
+            "afterArrival": 10
+          },
+          "waitingCharges": {
+            "freeMinutes": 5,
+            "perMinuteRate": 2,
+            "maximumCharge": 20
+          },
+          "nightCharges": {
+            "enabled": true,
+            "fixedAmount": 10,
+            "multiplier": 1.25
+          },
+          "surgePricing": {
+            "enabled": true,
+            "levels": [
+              {
+                "demandRatio": 2,
+                "multiplier": 1.5
+              },
+              {
+                "demandRatio": 3,
+                "multiplier": 2.0
+              }
+            ]
+          },
+          "helperCharges": {
+            "enabled": true,
+            "amount": 15
+          },
+          "convenienceFee": 25,
+          "vat": {
+            "enabled": true,
+            "percentage": 5
+          },
+          "subServices": {
+            "flatbedTowing": {
+              "enabled": true,
+              "label": "Flatbed Towing",
+              "info": "Safest option for all vehicles, including luxury/exotic cars & low clearance models.",
+              "convenienceFee": 30,
+              "helperCharges": 20
+            },
+            "wheelLiftTowing": {
+              "enabled": true,
+              "label": "Wheel Lift Towing",
+              "info": "Quick & efficient method lifting front or rear wheels, suitable for short-distance towing.",
+              "convenienceFee": 25,
+              "helperCharges": 15
+            }
+          }
+        },
+        "winchingServices": {
+          "enabled": true,
+          "label": "Winching Services",
+          "imageHint": "4x4 recovery vehicle pulling SUV from roadside mud",
+          "baseFare": {
+            "amount": 60,
+            "coverageKm": 5
+          },
+          "perKmRate": {
+            "afterBaseCoverage": 8,
+            "cityWiseAdjustment": {
+              "enabled": true,
+              "aboveKm": 8,
+              "adjustedRate": 6
+            }
+          },
+          "minimumFare": 60,
+          "platformFee": {
+            "percentage": 15,
+            "driverShare": 7.5,
+            "customerShare": 7.5
+          },
+          "cancellationCharges": {
+            "beforeArrival": 3,
+            "after50PercentDistance": 8,
+            "afterArrival": 15
+          },
+          "waitingCharges": {
+            "freeMinutes": 10,
+            "perMinuteRate": 3,
+            "maximumCharge": 30
+          },
+          "nightCharges": {
+            "enabled": true,
+            "fixedAmount": 15,
+            "multiplier": 1.3
+          },
+          "surgePricing": {
+            "enabled": true,
+            "levels": [
+              {
+                "demandRatio": 1.5,
+                "multiplier": 1.4
+              },
+              {
+                "demandRatio": 2.5,
+                "multiplier": 1.8
+              }
+            ]
+          },
+          "helperCharges": {
+            "enabled": true,
+            "amount": 20
+          },
+          "convenienceFee": 50,
+          "vat": {
+            "enabled": true,
+            "percentage": 5
+          },
+          "subServices": {
+            "onRoadWinching": {
+              "enabled": true,
+              "label": "On-Road Winching",
+              "info": "For vehicles stuck roadside due to ditch, breakdown, or minor accident.",
+              "convenienceFee": 100,
+              "helperCharges": 20
+            },
+            "offRoadWinching": {
+              "enabled": true,
+              "label": "Off-Road Winching",
+              "info": "Recovery for vehicles stuck in sand, mud, or rough terrain.",
+              "convenienceFee": 60,
+              "helperCharges": 25
+            }
+          }
+        },
+        "roadsideAssistance": {
+          "enabled": true,
+          "label": "Roadside Assistance",
+          "imageHint": "Technician helping with car battery on roadside",
+          "baseFare": {
+            "amount": 40,
+            "coverageKm": 3
+          },
+          "perKmRate": {
+            "afterBaseCoverage": 6,
+            "cityWiseAdjustment": {
+              "enabled": true,
+              "aboveKm": 5,
+              "adjustedRate": 4
+            }
+          },
+          "minimumFare": 40,
+          "platformFee": {
+            "percentage": 12,
+            "driverShare": 6,
+            "customerShare": 6
+          },
+          "cancellationCharges": {
+            "beforeArrival": 1,
+            "after50PercentDistance": 3,
+            "afterArrival": 5
+          },
+          "waitingCharges": {
+            "freeMinutes": 15,
+            "perMinuteRate": 1,
+            "maximumCharge": 15
+          },
+          "nightCharges": {
+            "enabled": true,
+            "fixedAmount": 8,
+            "multiplier": 1.2
+          },
+          "surgePricing": {
+            "enabled": true,
+            "levels": [
+              {
+                "demandRatio": 1.8,
+                "multiplier": 1.3
+              },
+              {
+                "demandRatio": 2.8,
+                "multiplier": 1.6
+              }
+            ]
+          },
+          "helperCharges": {
+            "enabled": true,
+            "amount": 10
+          },
+          "convenienceFee": 50,
+          "vat": {
+            "enabled": true,
+            "percentage": 5
+          },
+          "subServices": {
+            "batteryJumpStart": {
+              "enabled": true,
+              "label": "Battery Jump Start",
+              "info": "Portable jump-start service when battery is dead.",
+              "convenienceFee": 60,
+              "helperCharges": 10
+            },
+            "fuelDelivery": {
+              "enabled": true,
+              "label": "Fuel Delivery",
+              "info": "Fuel delivered directly to stranded vehicles (petrol/diesel).",
+              "convenienceFee": 80,
+              "helperCharges": 15
+            }
+          }
+        },
+        "specializedHeavyRecovery": {
+          "enabled": true,
+          "label": "Specialized/Heavy Recovery",
+          "imageHint": "Heavy-duty 6-wheeler tow truck pulling a large truck",
+          "baseFare": {
+            "amount": 80,
+            "coverageKm": 8
+          },
+          "perKmRate": {
+            "afterBaseCoverage": 10,
+            "cityWiseAdjustment": {
+              "enabled": true,
+              "aboveKm": 12,
+              "adjustedRate": 8
+            }
+          },
+          "minimumFare": 80,
+          "platformFee": {
+            "percentage": 18,
+            "driverShare": 9,
+            "customerShare": 9
+          },
+          "cancellationCharges": {
+            "beforeArrival": 5,
+            "after50PercentDistance": 12,
+            "afterArrival": 20
+          },
+          "waitingCharges": {
+            "freeMinutes": 20,
+            "perMinuteRate": 4,
+            "maximumCharge": 50
+          },
+          "nightCharges": {
+            "enabled": true,
+            "fixedAmount": 20,
+            "multiplier": 1.4
+          },
+          "surgePricing": {
+            "enabled": true,
+            "levels": [
+              {
+                "demandRatio": 1.3,
+                "multiplier": 1.5
+              },
+              {
+                "demandRatio": 2.2,
+                "multiplier": 2.2
+              }
+            ]
+          },
+          "helperCharges": {
+            "enabled": true,
+            "amount": 25
+          },
+          "convenienceFee": 75,
+          "vat": {
+            "enabled": true,
+            "percentage": 5
+          },
+          "subServices": {
+            "luxuryExoticCarRecovery": {
+              "enabled": true,
+              "label": "Luxury & Exotic Car Recovery",
+              "info": "Secure handling of high-end vehicles.",
+              "convenienceFee": 100,
+              "helperCharges": 30
+            },
+            "accidentCollisionRecovery": {
+              "enabled": true,
+              "label": "Accident & Collision Recovery",
+              "info": "Safe recovery after accidents.",
+              "convenienceFee": 80,
+              "helperCharges": 25
+            },
+            "heavyDutyVehicleRecovery": {
+              "enabled": true,
+              "label": "Heavy-Duty Vehicle Recovery",
+              "info": "Tow buses, trucks, and trailers.",
+              "convenienceFee": 90,
+              "helperCharges": 35
+            },
+            "basementPullOut": {
+              "enabled": true,
+              "label": "Basement Pull-Out",
+              "info": "Specialized service for underground/basement parking.",
+              "convenienceFee": 85,
+              "helperCharges": 28
+            }
+          }
+        }
+      }
+    },
+    "shiftingMovers": {
+      "enabled": true,
+      "vehicleCost": {
+        "startFare": 100,
+        "coverageKm": 5,
+        "perKmRate": 15
+      },
+      "basicServices": {
+        "loadingUnloadingHelper": {
+          "flatFee": 20,
+          "includeInBasicFare": true,
+          "baseLimit": 3
+        },
+        "packers": {
+          "flatFee": 20,
+          "includeInBasicFare": true,
+          "baseLimit": 3
+        },
+        "fixers": {
+          "flatFee": 20,
+          "includeInBasicFare": true,
+          "baseLimit": 3
+        }
+      },
+      "pickupLocationPolicy": {
+        "groundFloor": {
+          "extraCharge": 0
+        },
+        "stairs": {
+          "perFloorFare": {
+            "bed": 5,
+            "fridge": 15,
+            "sofa": 8,
+            "table": 4,
+            "chair": 2,
+            "wardrobe": 10,
+            "washingMachine": 12,
+            "tv": 6,
+            "microwave": 3,
+            "other": 5
+          }
+        },
+        "lift": {
+          "minorCharge": {
+            "bed": 5,
+            "fridge": 7,
+            "sofa": 6,
+            "table": 3,
+            "chair": 2,
+            "wardrobe": 8,
+            "washingMachine": 9,
+            "tv": 4,
+            "microwave": 2,
+            "other": 4
+          },
+          "baseLimit": 1,
+          "baseCoverage": "Ground +1 Floor"
+        }
+      },
+      "dropoffLocationPolicy": {
+        "groundFloor": {
+          "extraCharge": 0
+        },
+        "stairs": {
+          "perFloorFare": {
+            "bed": 5,
+            "fridge": 15,
+            "sofa": 8,
+            "table": 4,
+            "chair": 2,
+            "wardrobe": 10,
+            "washingMachine": 12,
+            "tv": 6,
+            "microwave": 3,
+            "other": 5
+          }
+        },
+        "lift": {
+          "minorCharge": {
+            "bed": 5,
+            "fridge": 7,
+            "sofa": 6,
+            "table": 3,
+            "chair": 2,
+            "wardrobe": 8,
+            "washingMachine": 9,
+            "tv": 4,
+            "microwave": 2,
+            "other": 4
+          },
+          "baseLimit": 1,
+          "baseCoverage": "Ground +1 Floor"
+        }
+      },
+      "packingFares": {
+        "bed": 15,
+        "fridge": 25,
+        "sofa": 18,
+        "table": 8,
+        "chair": 5,
+        "wardrobe": 18,
+        "washingMachine": 25,
+        "tv": 12,
+        "microwave": 8,
+        "other": 12
+      },
+      "categories": {
+        "smallMover": {
+          "enabled": true,
+          "label": "Small Mover",
+          "info": "Vehicle: Mini Pickup / Suzuki Carry / Small Van. Best for: Small apartments, single-room shifting, few items.",
+          "vehicles": ["mini pickup", "suzuki carry", "small van"],
+          "convenienceFee": 20,
+          "helperCharges": {
+            "enabled": true,
+            "amount": 15
+          },
+          "baseFare": {
+            "amount": 80,
+            "coverageKm": 5
+          },
+          "perKmRate": {
+            "afterBaseCoverage": 12
+          },
+          "minimumFare": 80
+        },
+        "mediumMover": {
+          "enabled": true,
+          "label": "Medium Mover",
+          "info": "Vehicle: Medium Truck / Mazda / Covered Van. Best for: 2–3 bedroom homes, medium office relocations.",
+          "vehicles": ["medium truck", "mazda", "covered van"],
+          "convenienceFee": 30,
+          "helperCharges": {
+            "enabled": true,
+            "amount": 20
+          },
+          "baseFare": {
+            "amount": 120,
+            "coverageKm": 5
+          },
+          "perKmRate": {
+            "afterBaseCoverage": 18
+          },
+          "minimumFare": 120
+        },
+        "heavyMover": {
+          "enabled": true,
+          "label": "Heavy Mover",
+          "info": "Vehicle: Large Truck / 6-Wheeler / Container Truck. Best for: Full house shifting, big offices, industrial goods.",
+          "vehicles": ["large truck", "6-wheeler", "container truck"],
+          "convenienceFee": 40,
+          "helperCharges": {
+            "enabled": true,
+            "amount": 30
+          },
+          "baseFare": {
+            "amount": 200,
+            "coverageKm": 5
+          },
+          "perKmRate": {
+            "afterBaseCoverage": 25
+          },
+          "minimumFare": 200
+        }
+      }
+    },
+    "carCab": {
+      "enabled": true,
+      "subServices": {
+        "economy": {
+          "enabled": true,
+          "label": "Economy",
+          "info": "Budget-friendly rides. Hatchbacks & small sedans. Ideal for daily use & short trips.",
+          "convenienceFee": 0,
+          "helperCharges": {
+            "enabled": false,
+            "amount": 0
+          },
+          "baseFare": {
+            "amount": 50,
+            "coverageKm": 3
+          },
+          "perKmRate": {
+            "afterBaseCoverage": 7.5
+          },
+          "minimumFare": 40,
+          "nightCharges": {
+            "enabled": true,
+            "fixedAmount": 5,
+            "multiplier": 1.2
+          }
+        },
+        "premium": {
+          "enabled": true,
+          "label": "Premium",
+          "info": "Business-class comfort. Luxury sedans & executive cars. Perfect for corporate travel & events.",
+          "convenienceFee": 5,
+          "helperCharges": {
+            "enabled": false,
+            "amount": 0
+          },
+          "baseFare": {
+            "amount": 60,
+            "coverageKm": 3
+          },
+          "perKmRate": {
+            "afterBaseCoverage": 9
+          },
+          "minimumFare": 50,
+          "nightCharges": {
+            "enabled": true,
+            "fixedAmount": 8,
+            "multiplier": 1.25
+          }
+        },
+        "xl": {
+          "enabled": true,
+          "label": "XL (Group Ride)",
+          "info": "SUVs & 7-seaters. Extra luggage space. Great for groups & airport transfers.",
+          "convenienceFee": 10,
+          "helperCharges": {
+            "enabled": true,
+            "amount": 5
+          },
+          "baseFare": {
+            "amount": 70,
+            "coverageKm": 3
+          },
+          "perKmRate": {
+            "afterBaseCoverage": 10
+          },
+          "minimumFare": 60,
+          "nightCharges": {
+            "enabled": true,
+            "fixedAmount": 10,
+            "multiplier": 1.3
+          }
+        },
+        "family": {
+          "enabled": true,
+          "label": "Family",
+          "info": "Spacious & safe for families. Optional child seat. Focus on comfort & safety for kids.",
+          "convenienceFee": 8,
+          "helperCharges": {
+            "enabled": true,
+            "amount": 3
+          },
+          "baseFare": {
+            "amount": 65,
+            "coverageKm": 3
+          },
+          "perKmRate": {
+            "afterBaseCoverage": 8.5
+          },
+          "minimumFare": 55,
+          "nightCharges": {
+            "enabled": true,
+            "fixedAmount": 7,
+            "multiplier": 1.2
+          }
+        },
+        "luxury": {
+          "enabled": true,
+          "label": "Luxury (VIP)",
+          "info": "Ultra-luxury cars like Hummer, GMC, Range Rover, Lexus, Mercedes, BMW. High-class comfort & prestige.",
+          "convenienceFee": 15,
+          "helperCharges": {
+            "enabled": true,
+            "amount": 10
+          },
+          "baseFare": {
+            "amount": 80,
+            "coverageKm": 3
+          },
+          "perKmRate": {
+            "afterBaseCoverage": 12
+          },
+          "minimumFare": 70,
+          "nightCharges": {
+            "enabled": true,
+            "fixedAmount": 15,
+            "multiplier": 1.4
+          }
+        }
+      }
+    },
+    "bike": {
+      "enabled": true,
+      "subServices": {
+        "economy": {
+          "enabled": true,
+          "label": "Economy",
+          "info": "Budget-friendly motorbike rides.",
+          "convenienceFee": 0,
+          "helperCharges": {
+            "enabled": false,
+            "amount": 0
+          },
+          "baseFare": {
+            "amount": 20,
+            "coverageKm": 2
+          },
+          "perKmRate": {
+            "afterBaseCoverage": 3
+          },
+          "minimumFare": 15,
+          "nightCharges": {
+            "enabled": true,
+            "fixedAmount": 3,
+            "multiplier": 1.15
+          }
+        },
+        "premium": {
+          "enabled": true,
+          "label": "Premium",
+          "info": "Comfortable bikes with experienced riders.",
+          "convenienceFee": 3,
+          "helperCharges": {
+            "enabled": false,
+            "amount": 0
+          },
+          "baseFare": {
+            "amount": 25,
+            "coverageKm": 2
+          },
+          "perKmRate": {
+            "afterBaseCoverage": 4
+          },
+          "minimumFare": 20,
+          "nightCharges": {
+            "enabled": true,
+            "fixedAmount": 5,
+            "multiplier": 1.2
+          }
+        },
+        "vip": {
+          "enabled": true,
+          "label": "VIP",
+          "info": "Stylish, high-end bikes for an exclusive experience.",
+          "convenienceFee": 5,
+          "helperCharges": {
+            "enabled": false,
+            "amount": 0
+          },
+          "baseFare": {
+            "amount": 30,
+            "coverageKm": 2
+          },
+          "perKmRate": {
+            "afterBaseCoverage": 5
+          },
+          "minimumFare": 25,
+          "nightCharges": {
+            "enabled": true,
+            "fixedAmount": 8,
+            "multiplier": 1.25
+          }
+        }
+      }
+    }
+  },
+  "roundTrip": {
+    "freeStayMinutes": {
+      "enabled": true,
+      "ratePerKm": 0.5,
+      "maximumMinutes": 60
+    },
+    "refreshmentAlert": {
+      "enabled": true,
+      "minimumDistance": 20,
+      "minimumDuration": 30
+    }
+  },
+  "vat": {
+    "enabled": true,
+    "countryBased": true,
+    "percentage": 5,
+    "showTotalIncludingTax": true
+  }
+}

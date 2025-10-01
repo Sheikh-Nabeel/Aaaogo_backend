@@ -92,7 +92,41 @@ const comprehensivePricingSchema = new mongoose.Schema({
         }
       },
       // Minimum fare for car cab service
-      minimumFare: { type: Number, default: 40 } // AED 40 for car cabs
+      minimumFare: { type: Number, default: 40 }, // AED 40 for car cabs
+      
+      // Sub-services matching vehicle select flow
+      subServices: {
+        economy: {
+          enabled: { type: Boolean, default: true },
+          label: { type: String, default: "Economy" },
+          info: { type: String, default: "Budget-friendly rides. Hatchbacks & small sedans. Ideal for daily use & short trips." },
+          convenienceFee: { type: Number, default: 0 }
+        },
+        premium: {
+          enabled: { type: Boolean, default: true },
+          label: { type: String, default: "Premium" },
+          info: { type: String, default: "Business-class comfort. Luxury sedans & executive cars. Perfect for corporate travel & events." },
+          convenienceFee: { type: Number, default: 5 }
+        },
+        xl: {
+          enabled: { type: Boolean, default: true },
+          label: { type: String, default: "XL (Group Ride)" },
+          info: { type: String, default: "SUVs & 7-seaters. Extra luggage space. Great for groups & airport transfers." },
+          convenienceFee: { type: Number, default: 10 }
+        },
+        family: {
+          enabled: { type: Boolean, default: true },
+          label: { type: String, default: "Family" },
+          info: { type: String, default: "Spacious & safe for families. Optional child seat. Focus on comfort & safety for kids." },
+          convenienceFee: { type: Number, default: 8 }
+        },
+        luxury: {
+          enabled: { type: Boolean, default: true },
+          label: { type: String, default: "Luxury (VIP)" },
+          info: { type: String, default: "Ultra-luxury cars like Hummer, GMC, Range Rover, Lexus, Mercedes, BMW. High-class comfort & prestige." },
+          convenienceFee: { type: Number, default: 15 }
+        }
+      }
     },
     bike: {
       enabled: { type: Boolean, default: true },
@@ -114,7 +148,29 @@ const comprehensivePricingSchema = new mongoose.Schema({
       minimumFare: { type: Number, default: 15 }, // AED 15 for bikes
       // Fallback for backward compatibility
       baseFare: { type: Number, default: 25 },
-      perKmRate: { type: Number, default: 4 }
+      perKmRate: { type: Number, default: 4 },
+      
+      // Sub-services matching vehicle select flow
+      subServices: {
+        economy: {
+          enabled: { type: Boolean, default: true },
+          label: { type: String, default: "Economy" },
+          info: { type: String, default: "Budget-friendly motorbike rides." },
+          convenienceFee: { type: Number, default: 0 }
+        },
+        premium: {
+          enabled: { type: Boolean, default: true },
+          label: { type: String, default: "Premium" },
+          info: { type: String, default: "Comfortable bikes with experienced riders." },
+          convenienceFee: { type: Number, default: 3 }
+        },
+        vip: {
+          enabled: { type: Boolean, default: true },
+          label: { type: String, default: "VIP" },
+          info: { type: String, default: "Stylish, high-end bikes for an exclusive experience." },
+          convenienceFee: { type: Number, default: 5 }
+        }
+      }
     },
     carRecovery: {
       enabled: { type: Boolean, default: true },
@@ -203,60 +259,405 @@ const comprehensivePricingSchema = new mongoose.Schema({
         }]
       },
       
-      // Service types (Winching & Roadside assistance)
-      serviceTypes: {
-        winching: {
+      // Service categories matching vehicle select flow
+      categories: {
+        towingServices: {
           enabled: { type: Boolean, default: true },
-          minimumChargesForDriverArriving: { type: Number, default: 5 }, // AED 5
-          convenienceFee: {
-            options: { type: [Number], default: [50, 100] }, // 50, 100... as per service based
-            default: { type: Number, default: 50 }
+          label: { type: String, default: "Towing Services" },
+          imageHint: { type: String, default: "Tow truck carrying a sedan on flatbed" },
+          
+          // Base fare structure
+          baseFare: {
+            amount: { type: Number, default: 50 }, // AED 50 for first 6km
+            coverageKm: { type: Number, default: 6 }
           },
-          subCategories: {
-            flatbed: { 
+          
+          // Per KM rate after base coverage
+          perKmRate: {
+            afterBaseCoverage: { type: Number, default: 7.5 }, // AED 7.5/km after 6km
+            cityWiseAdjustment: {
               enabled: { type: Boolean, default: true },
-              convenienceFee: { type: Number, default: 100 }
+              aboveKm: { type: Number, default: 10 },
+              adjustedRate: { type: Number, default: 5 } // AED 5/km if trip >10km
+            }
+          },
+          
+          // Minimum fare
+          minimumFare: { type: Number, default: 50 },
+          
+          // Platform fee
+          platformFee: {
+            percentage: { type: Number, default: 15 },
+            driverShare: { type: Number, default: 7.5 },
+            customerShare: { type: Number, default: 7.5 }
+          },
+          
+          // Cancellation charges
+          cancellationCharges: {
+            beforeArrival: { type: Number, default: 2 },
+            after50PercentDistance: { type: Number, default: 5 },
+            afterArrival: { type: Number, default: 10 }
+          },
+          
+          // Waiting charges
+          waitingCharges: {
+            freeMinutes: { type: Number, default: 5 },
+            perMinuteRate: { type: Number, default: 2 },
+            maximumCharge: { type: Number, default: 20 }
+          },
+          
+          // Night charges
+          nightCharges: {
+            enabled: { type: Boolean, default: true },
+            fixedAmount: { type: Number, default: 10 },
+            multiplier: { type: Number, default: 1.25 }
+          },
+          
+          // Surge pricing
+          surgePricing: {
+            enabled: { type: Boolean, default: true },
+            levels: [{
+              demandRatio: { type: Number, default: 2 },
+              multiplier: { type: Number, default: 1.5 }
+            }, {
+              demandRatio: { type: Number, default: 3 },
+              multiplier: { type: Number, default: 2.0 }
+            }]
+          },
+          
+          // Helper charges
+          helperCharges: {
+            enabled: { type: Boolean, default: true },
+            amount: { type: Number, default: 15 } // AED 15 for helper
+          },
+          
+          // Convenience fee
+          convenienceFee: { type: Number, default: 25 },
+          
+          // VAT
+          vat: {
+            enabled: { type: Boolean, default: true },
+            percentage: { type: Number, default: 5 }
+          },
+          
+          subServices: {
+            flatbedTowing: { 
+              enabled: { type: Boolean, default: true },
+              label: { type: String, default: "Flatbed Towing" },
+              info: { type: String, default: "Safest option for all vehicles, including luxury/exotic cars & low clearance models." },
+              convenienceFee: { type: Number, default: 30 },
+              helperCharges: { type: Number, default: 20 }
             },
-            wheelLift: { 
+            wheelLiftTowing: { 
               enabled: { type: Boolean, default: true },
-              convenienceFee: { type: Number, default: 80 }
+              label: { type: String, default: "Wheel Lift Towing" },
+              info: { type: String, default: "Quick & efficient method lifting front or rear wheels, suitable for short-distance towing." },
+              convenienceFee: { type: Number, default: 25 },
+              helperCharges: { type: Number, default: 15 }
+            }
+          }
+        },
+        winchingServices: {
+          enabled: { type: Boolean, default: true },
+          label: { type: String, default: "Winching Services" },
+          imageHint: { type: String, default: "4x4 recovery vehicle pulling SUV from roadside mud" },
+          
+          // Base fare structure
+          baseFare: {
+            amount: { type: Number, default: 60 }, // AED 60 for first 5km
+            coverageKm: { type: Number, default: 5 }
+          },
+          
+          // Per KM rate after base coverage
+          perKmRate: {
+            afterBaseCoverage: { type: Number, default: 8 }, // AED 8/km after 5km
+            cityWiseAdjustment: {
+              enabled: { type: Boolean, default: true },
+              aboveKm: { type: Number, default: 8 },
+              adjustedRate: { type: Number, default: 6 }
+            }
+          },
+          
+          // Minimum fare
+          minimumFare: { type: Number, default: 60 },
+          
+          // Platform fee
+          platformFee: {
+            percentage: { type: Number, default: 15 },
+            driverShare: { type: Number, default: 7.5 },
+            customerShare: { type: Number, default: 7.5 }
+          },
+          
+          // Cancellation charges
+          cancellationCharges: {
+            beforeArrival: { type: Number, default: 3 },
+            after50PercentDistance: { type: Number, default: 8 },
+            afterArrival: { type: Number, default: 15 }
+          },
+          
+          // Waiting charges
+          waitingCharges: {
+            freeMinutes: { type: Number, default: 10 },
+            perMinuteRate: { type: Number, default: 3 },
+            maximumCharge: { type: Number, default: 30 }
+          },
+          
+          // Night charges
+          nightCharges: {
+            enabled: { type: Boolean, default: true },
+            fixedAmount: { type: Number, default: 15 },
+            multiplier: { type: Number, default: 1.3 }
+          },
+          
+          // Surge pricing
+          surgePricing: {
+            enabled: { type: Boolean, default: true },
+            levels: [{
+              demandRatio: { type: Number, default: 1.5 },
+              multiplier: { type: Number, default: 1.4 }
+            }, {
+              demandRatio: { type: Number, default: 2.5 },
+              multiplier: { type: Number, default: 1.8 }
+            }]
+          },
+          
+          // Helper charges
+          helperCharges: {
+            enabled: { type: Boolean, default: true },
+            amount: { type: Number, default: 20 } // AED 20 for winching helper
+          },
+          
+          // Convenience fee
+          convenienceFee: { type: Number, default: 50 },
+          
+          // VAT
+          vat: {
+            enabled: { type: Boolean, default: true },
+            percentage: { type: Number, default: 5 }
+          },
+          
+          subServices: {
+            onRoadWinching: { 
+              enabled: { type: Boolean, default: true },
+              label: { type: String, default: "On-Road Winching" },
+              info: { type: String, default: "For vehicles stuck roadside due to ditch, breakdown, or minor accident." },
+              convenienceFee: { type: Number, default: 50 },
+              helperCharges: { type: Number, default: 20 }
             },
-            heavyDutyTowing: {
+            offRoadWinching: { 
               enabled: { type: Boolean, default: true },
-              convenienceFee: { type: Number, default: 150 }
+              label: { type: String, default: "Off-Road Winching" },
+              info: { type: String, default: "Recovery for vehicles stuck in sand, mud, or rough terrain." },
+              convenienceFee: { type: Number, default: 60 },
+              helperCharges: { type: Number, default: 25 }
             }
           }
         },
         roadsideAssistance: {
           enabled: { type: Boolean, default: true },
-          minimumChargesForDriverArriving: { type: Number, default: 5 }, // AED 5
-          convenienceFee: {
-            options: { type: [Number], default: [50, 100] }, // 50, 100... as per service based
-            default: { type: Number, default: 50 }
+          label: { type: String, default: "Roadside Assistance" },
+          imageHint: { type: String, default: "Technician helping with car battery on roadside" },
+          
+          // Base fare structure
+          baseFare: {
+            amount: { type: Number, default: 40 }, // AED 40 for first 3km
+            coverageKm: { type: Number, default: 3 }
           },
-          subCategories: {
-            jumpstart: { 
+          
+          // Per KM rate after base coverage
+          perKmRate: {
+            afterBaseCoverage: { type: Number, default: 6 }, // AED 6/km after 3km
+            cityWiseAdjustment: {
               enabled: { type: Boolean, default: true },
-              convenienceFee: { type: Number, default: 60 }
-            },
-            tirePunctureRepair: {
+              aboveKm: { type: Number, default: 5 },
+              adjustedRate: { type: Number, default: 4 }
+            }
+          },
+          
+          // Minimum fare
+          minimumFare: { type: Number, default: 40 },
+          
+          // Platform fee
+          platformFee: {
+            percentage: { type: Number, default: 12 },
+            driverShare: { type: Number, default: 6 },
+            customerShare: { type: Number, default: 6 }
+          },
+          
+          // Cancellation charges
+          cancellationCharges: {
+            beforeArrival: { type: Number, default: 1 },
+            after50PercentDistance: { type: Number, default: 3 },
+            afterArrival: { type: Number, default: 5 }
+          },
+          
+          // Waiting charges
+          waitingCharges: {
+            freeMinutes: { type: Number, default: 15 },
+            perMinuteRate: { type: Number, default: 1 },
+            maximumCharge: { type: Number, default: 15 }
+          },
+          
+          // Night charges
+          nightCharges: {
+            enabled: { type: Boolean, default: true },
+            fixedAmount: { type: Number, default: 8 },
+            multiplier: { type: Number, default: 1.2 }
+          },
+          
+          // Surge pricing
+          surgePricing: {
+            enabled: { type: Boolean, default: true },
+            levels: [{
+              demandRatio: { type: Number, default: 1.8 },
+              multiplier: { type: Number, default: 1.3 }
+            }, {
+              demandRatio: { type: Number, default: 2.8 },
+              multiplier: { type: Number, default: 1.6 }
+            }]
+          },
+          
+          // Helper charges
+          helperCharges: {
+            enabled: { type: Boolean, default: true },
+            amount: { type: Number, default: 10 } // AED 10 for roadside helper
+          },
+          
+          // Convenience fee
+          convenienceFee: { type: Number, default: 50 },
+          
+          // VAT
+          vat: {
+            enabled: { type: Boolean, default: true },
+            percentage: { type: Number, default: 5 }
+          },
+          
+          subServices: {
+            batteryJumpStart: { 
               enabled: { type: Boolean, default: true },
-              convenienceFee: { type: Number, default: 70 }
+              label: { type: String, default: "Battery Jump Start" },
+              info: { type: String, default: "Portable jump-start service when battery is dead." },
+              convenienceFee: { type: Number, default: 60 },
+              helperCharges: { type: Number, default: 10 }
             },
             fuelDelivery: {
               enabled: { type: Boolean, default: true },
-              convenienceFee: { type: Number, default: 80 }
-            },
-            batteryReplacement: {
-              enabled: { type: Boolean, default: true },
-              convenienceFee: { type: Number, default: 90 }
+              label: { type: String, default: "Fuel Delivery" },
+              info: { type: String, default: "Fuel delivered directly to stranded vehicles (petrol/diesel)." },
+              convenienceFee: { type: Number, default: 80 },
+              helperCharges: { type: Number, default: 15 }
             }
           }
         },
-        keyUnlockerServices: {
+        specializedHeavyRecovery: {
           enabled: { type: Boolean, default: true },
-          minimumChargesForDriverArriving: { type: Number, default: 5 }, // AED 5
-          convenienceFee: { type: Number, default: 75 }
+          label: { type: String, default: "Specialized/Heavy Recovery" },
+          imageHint: { type: String, default: "Heavy-duty 6-wheeler tow truck pulling a large truck" },
+          
+          // Base fare structure
+          baseFare: {
+            amount: { type: Number, default: 80 }, // AED 80 for first 8km
+            coverageKm: { type: Number, default: 8 }
+          },
+          
+          // Per KM rate after base coverage
+          perKmRate: {
+            afterBaseCoverage: { type: Number, default: 10 }, // AED 10/km after 8km
+            cityWiseAdjustment: {
+              enabled: { type: Boolean, default: true },
+              aboveKm: { type: Number, default: 12 },
+              adjustedRate: { type: Number, default: 8 }
+            }
+          },
+          
+          // Minimum fare
+          minimumFare: { type: Number, default: 80 },
+          
+          // Platform fee
+          platformFee: {
+            percentage: { type: Number, default: 18 },
+            driverShare: { type: Number, default: 9 },
+            customerShare: { type: Number, default: 9 }
+          },
+          
+          // Cancellation charges
+          cancellationCharges: {
+            beforeArrival: { type: Number, default: 5 },
+            after50PercentDistance: { type: Number, default: 12 },
+            afterArrival: { type: Number, default: 20 }
+          },
+          
+          // Waiting charges
+          waitingCharges: {
+            freeMinutes: { type: Number, default: 20 },
+            perMinuteRate: { type: Number, default: 4 },
+            maximumCharge: { type: Number, default: 50 }
+          },
+          
+          // Night charges
+          nightCharges: {
+            enabled: { type: Boolean, default: true },
+            fixedAmount: { type: Number, default: 20 },
+            multiplier: { type: Number, default: 1.4 }
+          },
+          
+          // Surge pricing
+          surgePricing: {
+            enabled: { type: Boolean, default: true },
+            levels: [{
+              demandRatio: { type: Number, default: 1.3 },
+              multiplier: { type: Number, default: 1.5 }
+            }, {
+              demandRatio: { type: Number, default: 2.2 },
+              multiplier: { type: Number, default: 2.2 }
+            }]
+          },
+          
+          // Helper charges
+          helperCharges: {
+            enabled: { type: Boolean, default: true },
+            amount: { type: Number, default: 25 } // AED 25 for heavy recovery helper
+          },
+          
+          // Convenience fee
+          convenienceFee: { type: Number, default: 75 },
+          
+          // VAT
+          vat: {
+            enabled: { type: Boolean, default: true },
+            percentage: { type: Number, default: 5 }
+          },
+          
+          subServices: {
+            luxuryExoticCarRecovery: { 
+              enabled: { type: Boolean, default: true },
+              label: { type: String, default: "Luxury & Exotic Car Recovery" },
+              info: { type: String, default: "Secure handling of high-end vehicles." },
+              convenienceFee: { type: Number, default: 100 },
+              helperCharges: { type: Number, default: 30 }
+            },
+            accidentCollisionRecovery: { 
+              enabled: { type: Boolean, default: true },
+              label: { type: String, default: "Accident & Collision Recovery" },
+              info: { type: String, default: "Safe recovery after accidents." },
+              convenienceFee: { type: Number, default: 80 },
+              helperCharges: { type: Number, default: 25 }
+            },
+            heavyDutyVehicleRecovery: { 
+              enabled: { type: Boolean, default: true },
+              label: { type: String, default: "Heavy-Duty Vehicle Recovery" },
+              info: { type: String, default: "Tow buses, trucks, and trailers." },
+              convenienceFee: { type: Number, default: 90 },
+              helperCharges: { type: Number, default: 35 }
+            },
+            basementPullOut: { 
+              enabled: { type: Boolean, default: true },
+              label: { type: String, default: "Basement Pull-Out" },
+              info: { type: String, default: "Specialized service for underground/basement parking." },
+              convenienceFee: { type: Number, default: 85 },
+              helperCharges: { type: Number, default: 28 }
+            }
+          }
         }
       },
       
@@ -434,6 +835,31 @@ const comprehensivePricingSchema = new mongoose.Schema({
         microwave: { type: Number, default: 8 },
         fridge: { type: Number, default: 30 },
         other: { type: Number, default: 12 }
+      }
+    },
+    
+    // Categories matching vehicle select flow
+    categories: {
+      smallMover: {
+        enabled: { type: Boolean, default: true },
+        label: { type: String, default: "Small Mover" },
+        info: { type: String, default: "Vehicle: Mini Pickup / Suzuki Carry / Small Van. Best for: Small apartments, single-room shifting, few items." },
+        vehicles: [{ type: String, default: "mini pickup" }, { type: String, default: "suzuki carry" }, { type: String, default: "small van" }],
+        convenienceFee: { type: Number, default: 20 }
+      },
+      mediumMover: {
+        enabled: { type: Boolean, default: true },
+        label: { type: String, default: "Medium Mover" },
+        info: { type: String, default: "Vehicle: Medium Truck / Mazda / Covered Van. Best for: 2–3 bedroom homes, medium office relocations." },
+        vehicles: [{ type: String, default: "medium truck" }, { type: String, default: "mazda" }, { type: String, default: "covered van" }],
+        convenienceFee: { type: Number, default: 30 }
+      },
+      heavyMover: {
+        enabled: { type: Boolean, default: true },
+        label: { type: String, default: "Heavy Mover" },
+        info: { type: String, default: "Vehicle: Large Truck / 6-Wheeler / Container Truck. Best for: Full house shifting, big offices, industrial goods." },
+        vehicles: [{ type: String, default: "large truck" }, { type: String, default: "6-wheeler" }, { type: String, default: "container truck" }],
+        convenienceFee: { type: Number, default: 40 }
       }
     }
   },

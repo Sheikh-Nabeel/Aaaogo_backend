@@ -626,60 +626,120 @@ const updateMinimumFare = async (req, res) => {
   }
 };
 
-// Bulk update comprehensive pricing
+// Helper function to validate configuration structure
+const validateConfigurationStructure = (config) => {
+  const errors = [];
+  
+  // Validate serviceTypes structure
+  if (config.serviceTypes) {
+    const validServiceTypes = ['carRecovery', 'shiftingMovers', 'carCab', 'bike'];
+    
+    Object.keys(config.serviceTypes).forEach(serviceType => {
+      if (!validServiceTypes.includes(serviceType)) {
+        errors.push(`Invalid service type: ${serviceType}. Valid types are: ${validServiceTypes.join(', ')}`);
+      }
+      
+      // Validate carRecovery categories
+      if (serviceType === 'carRecovery' && config.serviceTypes[serviceType].categories) {
+        const validCategories = ['towingServices', 'winchingServices', 'roadsideAssistance', 'specializedHeavyRecovery'];
+        Object.keys(config.serviceTypes[serviceType].categories).forEach(category => {
+          if (!validCategories.includes(category)) {
+            errors.push(`Invalid car recovery category: ${category}. Valid categories are: ${validCategories.join(', ')}`);
+          }
+        });
+      }
+    });
+  }
+  
+  return errors;
+};
+
+// Single endpoint to update all configuration for all categories and sub-categories
 const bulkUpdatePricing = async (req, res) => {
   try {
     const updates = req.body;
     const adminId = req.user.id;
     
+    // Validate that we have updates
+    if (!updates || Object.keys(updates).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No configuration data provided'
+      });
+    }
+    
+    // Validate configuration structure
+    const validationErrors = validateConfigurationStructure(updates);
+    if (validationErrors.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Configuration validation failed',
+        errors: validationErrors
+      });
+    }
+    
     let config = await ComprehensivePricing.findOne({ isActive: true });
     if (!config) {
       // Create new config with provided updates as initial values
-      config = await ComprehensivePricing.create({ ...updates, lastUpdatedBy: adminId });
-      return res.status(200).json({
+      config = await ComprehensivePricing.create({ 
+        ...updates, 
+        lastUpdatedBy: adminId,
+        isActive: true 
+      });
+      return res.status(201).json({
         success: true,
-        message: 'Comprehensive pricing created successfully',
+        message: 'Comprehensive pricing configuration created successfully',
         data: config
       });
     }
     
-    // Apply all updates
-    Object.keys(updates).forEach(key => {
-      if (key !== 'lastUpdatedBy' && updates[key] !== undefined) {
-        if (typeof updates[key] === 'object' && !Array.isArray(updates[key])) {
+    // Enhanced deep merge function for nested objects with validation
+    const deepMerge = (target, source, path = '') => {
+      for (const key in source) {
+        const currentPath = path ? `${path}.${key}` : key;
+        
+        if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
           // Handle nested objects
-          Object.keys(updates[key]).forEach(nestedKey => {
-            if (config[key] && updates[key][nestedKey] !== undefined) {
-              if (typeof updates[key][nestedKey] === 'object' && !Array.isArray(updates[key][nestedKey])) {
-                // Handle deeply nested objects
-                Object.keys(updates[key][nestedKey]).forEach(deepKey => {
-                  if (config[key][nestedKey] && updates[key][nestedKey][deepKey] !== undefined) {
-                    config[key][nestedKey][deepKey] = updates[key][nestedKey][deepKey];
-                  }
-                });
-              } else {
-                config[key][nestedKey] = updates[key][nestedKey];
-              }
-            }
-          });
-        } else {
-          config[key] = updates[key];
+          if (!target[key]) {
+            target[key] = {};
+          }
+          deepMerge(target[key], source[key], currentPath);
+        } else if (source[key] !== undefined) {
+          // Handle primitive values
+          target[key] = source[key];
         }
       }
-    });
+      return target;
+    };
     
+    // Apply all updates using deep merge
+    deepMerge(config, updates);
+    
+    // Update metadata
     config.lastUpdatedBy = adminId;
+    config.updatedAt = new Date();
+    
+    // Save the updated configuration
     await config.save();
     
     res.status(200).json({
       success: true,
-      message: 'Comprehensive pricing updated successfully',
-      data: config
+      message: 'Comprehensive pricing configuration updated successfully',
+      data: {
+        id: config._id,
+        isActive: config.isActive,
+        lastUpdatedBy: config.lastUpdatedBy,
+        updatedAt: config.updatedAt,
+        serviceTypes: config.serviceTypes,
+        roundTrip: config.roundTrip,
+        vat: config.vat
+      }
     });
   } catch (error) {
+    console.error('Error updating comprehensive pricing:', error);
     res.status(500).json({
       success: false,
-      message: 'Error updating comprehensive pricing',
+      message: 'Error updating comprehensive pricing configuration',
       error: error.message
     });
   }

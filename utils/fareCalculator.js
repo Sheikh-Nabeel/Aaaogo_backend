@@ -287,12 +287,27 @@ const calculateDynamicCarRecoveryFare = async (bookingData) => {
     
     const recoveryConfig = pricingConfig.serviceTypes.carRecovery;
     
-    // 1. Base Fare: Use config value for first coverage km
-    const baseFare = recoveryConfig.baseFare.amount;
-    const coverageKm = recoveryConfig.baseFare.coverageKm;
+    // Get category-specific configuration
+    let categoryConfig = null;
+    if (serviceCategory === 'towing services' && recoveryConfig.categories?.towingServices) {
+      categoryConfig = recoveryConfig.categories.towingServices;
+    } else if (serviceCategory === 'winching services' && recoveryConfig.categories?.winchingServices) {
+      categoryConfig = recoveryConfig.categories.winchingServices;
+    } else if (serviceCategory === 'roadside assistance' && recoveryConfig.categories?.roadsideAssistance) {
+      categoryConfig = recoveryConfig.categories.roadsideAssistance;
+    } else if (serviceCategory === 'specialized/heavy recovery' && recoveryConfig.categories?.specializedHeavyRecovery) {
+      categoryConfig = recoveryConfig.categories.specializedHeavyRecovery;
+    }
     
+    // Use category-specific config if available, otherwise fall back to general config
+    const config = categoryConfig || recoveryConfig;
+    
+    // 1. Base Fare: Use config value for first coverage km
+    const baseFare = config.baseFare.amount;
+    const coverageKm = config.baseFare.coverageKm;
+
     // 2. Per KM Rate: After coverage km, use config rate
-    const perKmRate = recoveryConfig.perKmRate.afterBaseCoverage;
+    const perKmRate = config.perKmRate.afterBaseCoverage;
     const distanceFare = distance > coverageKm ? (distance - coverageKm) * perKmRate : 0;
     
     // 3. Apply route type multiplier for round trips
@@ -303,28 +318,28 @@ const calculateDynamicCarRecoveryFare = async (bookingData) => {
     
     // 4. Minimum Fare: Use config minimum fare
     const subtotal = (baseFare + distanceFare) * routeMultiplier;
-    const minimumFare = recoveryConfig.minimumFare * routeMultiplier;
+    const minimumFare = config.minimumFare * routeMultiplier;
     const adjustedSubtotal = Math.max(subtotal, minimumFare);
     
     // 4. Platform Fee: Use config percentage
-    const platformFeePercentage = recoveryConfig.platformFee.percentage;
+    const platformFeePercentage = config.platformFee.percentage;
     const platformFeeAmount = (adjustedSubtotal * platformFeePercentage) / 100;
-    const customerPlatformFee = platformFeeAmount * (recoveryConfig.platformFee.customerShare / recoveryConfig.platformFee.percentage);
-    const driverPlatformFee = platformFeeAmount * (recoveryConfig.platformFee.driverShare / recoveryConfig.platformFee.percentage);
+    const customerPlatformFee = platformFeeAmount * (config.platformFee.customerShare / config.platformFee.percentage);
+    const driverPlatformFee = platformFeeAmount * (config.platformFee.driverShare / config.platformFee.percentage);
     
     // 5. Night Charges: Use config values when explicitly flagged
     let nightCharges = 0;
-    if (isNightTime && recoveryConfig.nightCharges.enabled) {
-      const nightChargeFixed = recoveryConfig.nightCharges.fixedAmount;
-      const nightChargeMultiplied = adjustedSubtotal * (recoveryConfig.nightCharges.multiplier - 1);
+    if (isNightTime && config.nightCharges.enabled) {
+      const nightChargeFixed = config.nightCharges.fixedAmount;
+      const nightChargeMultiplied = adjustedSubtotal * (config.nightCharges.multiplier - 1);
       nightCharges = Math.max(nightChargeFixed, nightChargeMultiplied);
     }
     
     // 6. Surge Pricing: Use config surge pricing with support for fractional demand ratios
     let surgeMultiplier = 1;
     let surgeCharges = 0;
-    if (recoveryConfig.surgePricing.enabled && demandRatio > 1) {
-      const levelsAsc = [...(recoveryConfig.surgePricing.levels || [])]
+    if (config.surgePricing.enabled && demandRatio > 1) {
+      const levelsAsc = [...(config.surgePricing.levels || [])]
         .filter(l => typeof l.demandRatio === 'number' && typeof l.multiplier === 'number')
         .sort((a, b) => a.demandRatio - b.demandRatio);
 
@@ -364,44 +379,84 @@ const calculateDynamicCarRecoveryFare = async (bookingData) => {
     
     // 7. City-wise Pricing: Use config city-wise adjustment
     let cityCharges = 0;
-    if (recoveryConfig.perKmRate.cityWiseAdjustment.enabled && 
-        distance > recoveryConfig.perKmRate.cityWiseAdjustment.aboveKm && 
+    if (config.perKmRate.cityWiseAdjustment.enabled && 
+        distance > config.perKmRate.cityWiseAdjustment.aboveKm && 
         cityCode !== 'default') {
-      const citySpecificRate = recoveryConfig.perKmRate.cityWiseAdjustment.adjustedRate;
+      const citySpecificRate = config.perKmRate.cityWiseAdjustment.adjustedRate;
       cityCharges = distance * citySpecificRate;
     }
     
     // 8. Waiting Charges: Use config waiting charges
-    const freeWaitMinutes = recoveryConfig.waitingCharges.freeMinutes;
-    const waitingRatePerMinute = recoveryConfig.waitingCharges.perMinuteRate;
-    const maxWaitingCharges = recoveryConfig.waitingCharges.maximumCharge;
+    const freeWaitMinutes = config.waitingCharges.freeMinutes;
+    const waitingRatePerMinute = config.waitingCharges.perMinuteRate;
+    const maxWaitingCharges = config.waitingCharges.maximumCharge;
     let waitingCharges = 0;
     if (waitingMinutes > freeWaitMinutes) {
       waitingCharges = Math.min((waitingMinutes - freeWaitMinutes) * waitingRatePerMinute, maxWaitingCharges);
     }
     
-    // 9. Convenience Fee: Based on service type (+ helper if provided)
+    // 9. Convenience Fee: Check sub-service specific fees first, then category-level fees
     let convenienceFee = 0;
-    if (serviceCategory === 'winching services') {
-      convenienceFee = 50; // AED 50 for winching services
-    } else if (serviceCategory === 'roadside assistance') {
-      convenienceFee = 100; // AED 100 for roadside assistance
-    } else if (serviceCategory === 'towing services') {
-      convenienceFee = 25; // AED 25 for towing services
-    } else if (serviceCategory === 'specialized/heavy recovery') {
-      convenienceFee = 75; // AED 75 for specialized/heavy recovery
+    
+    // First, try to get sub-service specific convenience fee
+    if (categoryConfig && categoryConfig.subServices && vehicleType) {
+      // Map vehicleType to sub-service key
+      let subServiceKey = null;
+      if (vehicleType === 'on-road winching') subServiceKey = 'onRoadWinching';
+      else if (vehicleType === 'off-road winching') subServiceKey = 'offRoadWinching';
+      else if (vehicleType === 'flatbed towing') subServiceKey = 'flatbedTowing';
+      else if (vehicleType === 'wheel lift towing') subServiceKey = 'wheelLiftTowing';
+      else if (vehicleType === 'battery jump start') subServiceKey = 'batteryJumpStart';
+      else if (vehicleType === 'fuel delivery') subServiceKey = 'fuelDelivery';
+      else if (vehicleType === 'luxury & exotic car recovery') subServiceKey = 'luxuryExoticCarRecovery';
+      else if (vehicleType === 'accident & collision recovery') subServiceKey = 'accidentCollisionRecovery';
+      else if (vehicleType === 'heavy-duty vehicle recovery') subServiceKey = 'heavyDutyVehicleRecovery';
+      else if (vehicleType === 'basement pull-out') subServiceKey = 'basementPullOut';
+      
+      if (subServiceKey && categoryConfig.subServices[subServiceKey] && categoryConfig.subServices[subServiceKey].convenienceFee) {
+        convenienceFee = categoryConfig.subServices[subServiceKey].convenienceFee;
+      }
+    }
+    
+    // If no sub-service specific fee found, use category-level convenience fee
+    if (convenienceFee === 0) {
+      if (serviceCategory === 'winching services' && recoveryConfig.categories?.winchingServices?.enabled) {
+        convenienceFee = recoveryConfig.categories.winchingServices.convenienceFee || 50;
+      } else if (serviceCategory === 'roadside assistance' && recoveryConfig.categories?.roadsideAssistance?.enabled) {
+        convenienceFee = recoveryConfig.categories.roadsideAssistance.convenienceFee || 50;
+      } else if (serviceCategory === 'towing services' && recoveryConfig.categories?.towingServices?.enabled) {
+        convenienceFee = recoveryConfig.categories.towingServices.convenienceFee || 25;
+      } else if (serviceCategory === 'specialized/heavy recovery' && recoveryConfig.categories?.specializedHeavyRecovery?.enabled) {
+        convenienceFee = recoveryConfig.categories.specializedHeavyRecovery.convenienceFee || 75;
+      } else {
+        // Default convenience fee for other car recovery services
+        convenienceFee = 25;
+      }
     }
 
-    // Helper charge (runtime flag)
+    // Helper charge (runtime flag) - use category-specific helper charges
     if (serviceDetails && serviceDetails.helper === true) {
-      convenienceFee += 15;
+      let helperCharge = 15; // Default helper charge
+      
+      // Get helper charge from category config
+      if (serviceCategory === 'winching services' && recoveryConfig.categories?.winchingServices?.helperCharges?.amount) {
+        helperCharge = recoveryConfig.categories.winchingServices.helperCharges.amount;
+      } else if (serviceCategory === 'roadside assistance' && recoveryConfig.categories?.roadsideAssistance?.helperCharges?.amount) {
+        helperCharge = recoveryConfig.categories.roadsideAssistance.helperCharges.amount;
+      } else if (serviceCategory === 'towing services' && recoveryConfig.categories?.towingServices?.helperCharges?.amount) {
+        helperCharge = recoveryConfig.categories.towingServices.helperCharges.amount;
+      } else if (serviceCategory === 'specialized/heavy recovery' && recoveryConfig.categories?.specializedHeavyRecovery?.helperCharges?.amount) {
+        helperCharge = recoveryConfig.categories.specializedHeavyRecovery.helperCharges.amount;
+      }
+      
+      convenienceFee += helperCharge;
     }
     
     // Apply route multiplier to convenience fee
     convenienceFee = convenienceFee * routeMultiplier;
     
     // 10. VAT: Use config VAT rate
-    const vatRate = recoveryConfig.vat.enabled ? recoveryConfig.vat.percentage : 0;
+    const vatRate = config.vat.enabled ? config.vat.percentage : 0;
     const subtotalBeforeVat = adjustedSubtotal + nightCharges + surgeCharges + cityCharges + waitingCharges + convenienceFee;
     const vatAmount = (subtotalBeforeVat * vatRate) / 100;
     

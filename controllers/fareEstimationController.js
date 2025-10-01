@@ -188,6 +188,7 @@ const calculateFareByServiceType = async (serviceType, vehicleType, distance, ro
       vehicleType,
       distance: distanceInKm,
       routeType,
+      serviceCategory: additionalData.serviceCategory, // Add serviceCategory
       demandRatio: additionalData.demandRatio || 1,
       waitingMinutes: additionalData.waitingMinutes || 0,
       estimatedDuration: additionalData.estimatedDuration || 0,
@@ -438,6 +439,7 @@ const getFareEstimation = asyncHandler(async (req, res) => {
         finalDistance,
         routeType === "two_way" ? "round_trip" : "one_way",
         {
+          serviceCategory: serviceCategory, // Pass serviceCategory
           demandRatio: demandRatio,
           waitingMinutes: 0,
           isNightTime: nightRide,
