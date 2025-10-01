@@ -299,6 +299,142 @@ export const handleBookingEvents = (socket, io) => {
       if (typeof ack === 'function') ack({ ok: false, error: err.message });
     }
   });
+
+  // ===== DRIVER STATUS EVENTS =====
+  
+  // Driver go online
+  socket.on("driver_online", async (data, ack) => {
+    try {
+      console.log('Driver online event received:', { data, ackType: typeof ack, hasAck: !!ack });
+      
+      if (!socket.user || !socket.user._id) {
+        const err = { message: "Authentication required" };
+        socket.emit("error", err);
+        if (typeof ack === 'function') ack({ ok: false, error: err.message });
+        return;
+      }
+
+      if (socket.user.role !== "driver") {
+        const err = { message: "Only drivers can go online" };
+        socket.emit("error", err);
+        if (typeof ack === 'function') ack({ ok: false, error: err.message });
+        return;
+      }
+
+      // Check if driver has joined the driver room
+      const driverRoom = `driver_${socket.user._id}`;
+      if (!socket.rooms.has(driverRoom)) {
+        const err = { message: "Driver must join driver room first before going online" };
+        socket.emit("error", err);
+        if (typeof ack === 'function') ack({ ok: false, error: err.message });
+        return;
+      }
+
+      // Import User model
+      const User = (await import('../models/userModel.js')).default;
+      
+      // Update driver status to online in database
+      await User.findByIdAndUpdate(socket.user._id, {
+        isActive: true,
+        driverStatus: "online",
+        lastActiveAt: new Date()
+      });
+
+      console.log(`Driver ${socket.user._id} (${socket.user.email}) is now ONLINE`.green);
+      
+      // Send acknowledgment
+      const response = { 
+        ok: true, 
+        message: "Driver is now online",
+        status: "online"
+      };
+      
+      console.log('Sending acknowledgment:', response);
+      console.log('Ack function type:', typeof ack);
+      
+      if (typeof ack === 'function') {
+        ack(response);
+        console.log('Acknowledgment sent successfully');
+      } else {
+        console.log('No acknowledgment function provided');
+        // Send response via emit as fallback
+        socket.emit('driver_online_response', response);
+      }
+
+    } catch (error) {
+      console.error('Error setting driver online:', error);
+      const err = { message: "Failed to set driver online" };
+      socket.emit("error", err);
+      if (typeof ack === 'function') ack({ ok: false, error: err.message });
+    }
+  });
+
+  // Driver go offline
+  socket.on("driver_offline", async (data, ack) => {
+    try {
+      console.log('Driver offline event received:', { data, ackType: typeof ack, hasAck: !!ack });
+      
+      if (!socket.user || !socket.user._id) {
+        const err = { message: "Authentication required" };
+        socket.emit("error", err);
+        if (typeof ack === 'function') ack({ ok: false, error: err.message });
+        return;
+      }
+
+      if (socket.user.role !== "driver") {
+        const err = { message: "Only drivers can go offline" };
+        socket.emit("error", err);
+        if (typeof ack === 'function') ack({ ok: false, error: err.message });
+        return;
+      }
+
+      // Check if driver has joined the driver room
+      const driverRoom = `driver_${socket.user._id}`;
+      if (!socket.rooms.has(driverRoom)) {
+        const err = { message: "Driver must join driver room first before going offline" };
+        socket.emit("error", err);
+        if (typeof ack === 'function') ack({ ok: false, error: err.message });
+        return;
+      }
+
+      // Import User model
+      const User = (await import('../models/userModel.js')).default;
+      
+      // Update driver status to offline in database
+      await User.findByIdAndUpdate(socket.user._id, {
+        isActive: false,
+        driverStatus: "offline",
+        lastActiveAt: new Date()
+      });
+
+      console.log(`Driver ${socket.user._id} (${socket.user.email}) is now OFFLINE`.red);
+      
+      // Send acknowledgment
+      const response = { 
+        ok: true, 
+        message: "Driver is now offline",
+        status: "offline"
+      };
+      
+      console.log('Sending acknowledgment:', response);
+      console.log('Ack function type:', typeof ack);
+      
+      if (typeof ack === 'function') {
+        ack(response);
+        console.log('Acknowledgment sent successfully');
+      } else {
+        console.log('No acknowledgment function provided');
+        // Send response via emit as fallback
+        socket.emit('driver_offline_response', response);
+      }
+
+    } catch (error) {
+      console.error('Error setting driver offline:', error);
+      const err = { message: "Failed to set driver offline" };
+      socket.emit("error", err);
+      if (typeof ack === 'function') ack({ ok: false, error: err.message });
+    }
+  });
 };
 
 // Helper function to find nearby drivers
