@@ -1,0 +1,314 @@
+{
+  "fare_adjustment_api_examples": {
+    "description": "Complete examples for all fare adjustment API endpoints",
+    "base_url": "http://localhost:3001/api/fare",
+    "authentication": "Bearer JWT_TOKEN or Cookie: token=JWT_TOKEN",
+    
+    "endpoints": {
+      "1_adjust_fare": {
+        "url": "/adjust-fare",
+        "method": "POST",
+        "description": "Validate and adjust a single fare within min/max limits (pre-booking)",
+        "request_body": {
+          "originalFare": 100.50,
+          "adjustedFare": 105.25,
+          "serviceType": "car recovery",
+          "reason": "Customer willing to pay extra for faster service",
+          "adjustmentType": "user_requested"
+        },
+        "response_success": {
+          "success": true,
+          "message": "Fare adjustment validated successfully",
+          "data": {
+            "originalFare": 100.50,
+            "adjustedFare": 105.25,
+            "adjustmentAmount": 4.75,
+            "adjustmentPercentage": 4.73,
+            "currency": "AED",
+            "adjustmentType": "user_requested",
+            "reason": "Customer willing to pay extra for faster service",
+            "adjustmentRange": {
+              "minFare": 97.49,
+              "maxFare": 103.52,
+              "allowedPercentage": 3
+            },
+            "timestamp": "2024-01-15T10:30:00.000Z",
+            "tripContext": {
+              "serviceType": "car recovery",
+              "userId": "user_123456",
+              "estimatedAt": "2024-01-15T10:30:00.000Z"
+            }
+          }
+        },
+        "response_error": {
+          "success": false,
+          "message": "Adjusted fare must be between 97.49 and 103.52 AED (±3% of original fare)",
+          "adjustmentRange": {
+            "minFare": 97.49,
+            "maxFare": 103.52,
+            "allowedPercentage": 3
+          }
+        }
+      },
+      
+      "2_get_adjustment_range": {
+        "url": "/adjustment-range",
+        "method": "POST",
+        "description": "Get the min/max fare adjustment range for a specific fare",
+        "request_body": {
+          "originalFare": 150.00,
+          "serviceType": "car cab"
+        },
+        "response_success": {
+          "success": true,
+          "message": "Fare adjustment range calculated successfully",
+          "data": {
+            "originalFare": 150.00,
+            "adjustmentRange": {
+              "minFare": 145.50,
+              "maxFare": 154.50,
+              "allowedPercentage": 3,
+              "adjustmentAmount": {
+                "min": -4.50,
+                "max": 4.50
+              }
+            },
+            "currency": "AED",
+            "canAdjustFare": true,
+            "settings": {
+              "allowedAdjustmentPercentage": 3,
+              "enableUserFareAdjustment": true,
+              "enablePendingBookingFareIncrease": true
+            }
+          }
+        }
+      },
+      
+      "3_validate_bulk_adjustments": {
+        "url": "/validate-bulk-adjustments",
+        "method": "POST",
+        "description": "Validate multiple fare adjustments at once",
+        "request_body": {
+          "adjustments": [
+            {
+              "originalFare": 80.00,
+              "adjustedFare": 82.40,
+              "serviceType": "bike",
+              "reason": "Night ride surcharge",
+              "adjustmentType": "user_requested"
+            },
+            {
+              "originalFare": 120.00,
+              "adjustedFare": 125.00,
+              "serviceType": "shifting & movers",
+              "reason": "Additional helper required",
+              "adjustmentType": "user_requested"
+            },
+            {
+              "originalFare": 200.00,
+              "adjustedFare": 190.00,
+              "serviceType": "car recovery",
+              "reason": "Customer discount",
+              "adjustmentType": "admin_override"
+            }
+          ]
+        },
+        "response_success": {
+          "success": true,
+          "message": "Validated 3 adjustments successfully",
+          "data": {
+            "validAdjustments": [
+              {
+                "index": 0,
+                "originalFare": 80.00,
+                "adjustedFare": 82.40,
+                "adjustmentAmount": 2.40,
+                "adjustmentPercentage": 3.00,
+                "currency": "AED",
+                "reason": "Night ride surcharge",
+                "adjustmentType": "user_requested",
+                "serviceType": "bike",
+                "valid": true
+              },
+              {
+                "index": 1,
+                "originalFare": 120.00,
+                "adjustedFare": 125.00,
+                "adjustmentAmount": 5.00,
+                "adjustmentPercentage": 4.17,
+                "currency": "AED",
+                "reason": "Additional helper required",
+                "adjustmentType": "user_requested",
+                "serviceType": "shifting & movers",
+                "valid": true
+              },
+              {
+                "index": 2,
+                "originalFare": 200.00,
+                "adjustedFare": 190.00,
+                "adjustmentAmount": -10.00,
+                "adjustmentPercentage": -5.00,
+                "currency": "AED",
+                "reason": "Customer discount",
+                "adjustmentType": "admin_override",
+                "serviceType": "car recovery",
+                "valid": true
+              }
+            ],
+            "invalidAdjustments": [],
+            "summary": {
+              "total": 3,
+              "valid": 3,
+              "invalid": 0
+            }
+          }
+        },
+        "response_error_example": {
+          "success": true,
+          "message": "Validated 1 adjustments successfully",
+          "data": {
+            "validAdjustments": [
+              {
+                "index": 0,
+                "originalFare": 80.00,
+                "adjustedFare": 82.40,
+                "adjustmentAmount": 2.40,
+                "adjustmentPercentage": 3.00,
+                "currency": "AED",
+                "reason": "Night ride surcharge",
+                "adjustmentType": "user_requested",
+                "serviceType": "bike",
+                "valid": true
+              }
+            ],
+            "invalidAdjustments": [
+              {
+                "index": 1,
+                "error": "Adjusted fare must be between 116.40 and 123.60 AED",
+                "adjustmentRange": {
+                  "minFare": 116.40,
+                  "maxFare": 123.60
+                }
+              }
+            ],
+            "summary": {
+              "total": 2,
+              "valid": 1,
+              "invalid": 1
+            }
+          }
+        }
+      }
+    },
+    
+    "adjustment_types": {
+      "user_requested": "User/customer requested fare adjustment",
+      "driver_suggested": "Driver suggested fare adjustment",
+      "admin_override": "Admin override for special cases"
+    },
+    
+    "service_types": [
+      "car recovery",
+      "car cab", 
+      "bike",
+      "shifting & movers"
+    ],
+    
+    "common_scenarios": {
+      "night_ride_adjustment": {
+        "description": "Adjust fare for night time rides (pre-booking)",
+        "request": {
+          "originalFare": 50.00,
+          "adjustedFare": 52.50,
+          "serviceType": "car cab",
+          "reason": "Customer willing to pay extra for night service",
+          "adjustmentType": "user_requested"
+        }
+      },
+      "helper_adjustment": {
+        "description": "Adjust fare when helper is required (pre-booking)",
+        "request": {
+          "originalFare": 100.00,
+          "adjustedFare": 120.00,
+          "serviceType": "shifting & movers",
+          "reason": "Customer requesting additional helper",
+          "adjustmentType": "user_requested"
+        }
+      },
+      "priority_adjustment": {
+        "description": "Adjust fare for priority/faster service (pre-booking)",
+        "request": {
+          "originalFare": 75.00,
+          "adjustedFare": 78.00,
+          "serviceType": "car recovery",
+          "reason": "Customer wants priority service",
+          "adjustmentType": "user_requested"
+        }
+      },
+      "discount_adjustment": {
+        "description": "Apply customer discount (pre-booking)",
+        "request": {
+          "originalFare": 150.00,
+          "adjustedFare": 135.00,
+          "serviceType": "car cab",
+          "reason": "Loyalty customer 10% discount",
+          "adjustmentType": "admin_override"
+        }
+      }
+    },
+    
+    "error_responses": {
+      "authentication_required": {
+        "status": 401,
+        "response": {
+          "success": false,
+          "message": "Authentication required. Please log in to adjust fare."
+        }
+      },
+      "kyc_not_approved": {
+        "status": 403,
+        "response": {
+          "success": false,
+          "message": "KYC Level 1 must be approved to adjust fare."
+        }
+      },
+      "adjustment_disabled": {
+        "status": 403,
+        "response": {
+          "success": false,
+          "message": "Fare adjustment is currently disabled by admin"
+        }
+      },
+      "invalid_range": {
+        "status": 400,
+        "response": {
+          "success": false,
+          "message": "Adjusted fare must be between 97.00 and 103.00 AED (±3% of original fare)",
+          "adjustmentRange": {
+            "minFare": 97.00,
+            "maxFare": 103.00,
+            "allowedPercentage": 3
+          }
+        }
+      },
+      "missing_fields": {
+        "status": 400,
+        "response": {
+          "success": false,
+          "message": "Original fare, adjusted fare, and service type are required"
+        }
+      }
+    },
+    
+    "testing_notes": {
+      "1": "All endpoints require authentication (JWT token)",
+      "2": "User must have KYC Level 1 approved",
+      "3": "Fare adjustments are limited by admin-configured percentage",
+      "4": "Default adjustment limit is ±3% but can be configured per service type",
+      "5": "Bulk validation returns both valid and invalid adjustments",
+      "6": "All monetary values are rounded to 2 decimal places",
+      "7": "Timestamps are in ISO format",
+      "8": "Currency is always AED"
+    }
+  }
+}

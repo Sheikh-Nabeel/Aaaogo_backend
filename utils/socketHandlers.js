@@ -1,4 +1,7 @@
 // Socket handlers: room join events + location events
+import User from '../models/userModel.js';
+import { calculateDistance } from './distanceCalculator.js';
+
 export const handleBookingEvents = (socket, io) => {
   const normalizeId = (val) => {
     try {
@@ -365,6 +368,160 @@ export const handleBookingEvents = (socket, io) => {
       console.error('Error setting driver online:', error);
       const err = { message: "Failed to set driver online" };
       socket.emit("error", err);
+      if (typeof ack === 'function') ack({ ok: false, error: err.message });
+    }
+  });
+
+  // ===== BOOKING EVENTS =====
+
+  // Customer sends booking request via Socket.IO
+  socket.on("send_booking_request", async (data, ack) => {
+    try {
+      if (!socket.user || !socket.user._id) {
+        const err = { message: "Authentication required" };
+        socket.emit("error", err);
+        if (typeof ack === 'function') ack({ ok: false, error: err.message });
+        return;
+      }
+
+      // Allow any authenticated role to send booking requests (customer, driver, admin)
+
+      const {
+        pickupLocation,
+        dropoffLocation,
+        serviceType,
+        serviceCategory,
+        vehicleType,
+        routeType = 'one_way',
+        driverPreference = 'nearby',
+        estimatedFare,
+        notes,
+        helper = false,
+        pinnedDriverId
+      } = data || {};
+
+      // Basic validation
+      if (!pickupLocation?.coordinates || !dropoffLocation?.coordinates) {
+        const err = { message: 'Pickup and dropoff locations are required' };
+        socket.emit('error', err);
+        if (typeof ack === 'function') ack({ ok: false, error: err.message });
+        return;
+      }
+      if (!serviceType || !vehicleType) {
+        const err = { message: 'serviceType and vehicleType are required' };
+        socket.emit('error', err);
+        if (typeof ack === 'function') ack({ ok: false, error: err.message });
+        return;
+      }
+
+      // Find nearby qualified drivers using helper
+      const drivers = await (async () => {
+        try {
+          console.log('=== FINDING DRIVERS FOR BOOKING REQUEST ==='.yellow);
+          console.log('Service Type:', serviceType);
+          console.log('Vehicle Type:', vehicleType);
+          console.log('Driver Preference:', driverPreference);
+          console.log('Helper Required:', helper);
+          
+          const { findNearbyDrivers } = await import('./socketHandlers.js');
+          // Build a minimal booking-like object for distance calc
+          const bookingLike = {
+            _id: { toString: () => `${Date.now()}` },
+            pickupLocation: { coordinates: pickupLocation.coordinates },
+            serviceType,
+            vehicleType,
+            driverPreference
+          };
+          const foundDrivers = await findNearbyDrivers(bookingLike, io);
+          console.log(`Found ${foundDrivers.length} drivers via findNearbyDrivers`.cyan);
+          return foundDrivers;
+        } catch (e) {
+          console.error('findNearbyDrivers failed, falling back:', e);
+          return [];
+        }
+      })();
+
+      // Build booking request payload
+      const requestPayload = {
+        requestId: `${Date.now()}_${socket.user._id}`,
+        userId: socket.user._id,
+        userInfo: {
+          id: socket.user._id,
+          name: [socket.user.firstName, socket.user.lastName].filter(Boolean).join(' ') || socket.user.username || socket.user.email,
+          email: socket.user.email,
+          phone: socket.user.phoneNumber || null,
+          profileImage: socket.user.selfieImage || null
+        },
+        pickupLocation,
+        dropoffLocation,
+        serviceType,
+        serviceCategory: serviceCategory || null,
+        vehicleType,
+        routeType,
+        driverPreference,
+        estimatedFare: typeof estimatedFare === 'number' ? estimatedFare : null,
+        notes: notes || null,
+        helper: !!helper,
+        timestamp: new Date().toISOString(),
+        status: 'pending'
+      };
+
+      // Targeting logic: pinned vs nearby vs pink_captain
+      let notified = 0;
+      console.log(`Processing ${drivers.length} drivers for targeting`.magenta);
+      
+      if (driverPreference === 'pinned' && pinnedDriverId) {
+        console.log(`Sending to pinned driver: ${pinnedDriverId}`.green);
+        io.to(`driver_${pinnedDriverId}`).emit('new_booking_request', requestPayload);
+        notified = 1;
+      } else {
+        for (const driver of drivers) {
+          console.log(`Processing driver: ${driver._id} (${driver.email})`.blue);
+          
+          if (driverPreference === 'pink_captain') {
+            const prefs = driver.driverSettings?.ridePreferences;
+            if (!prefs || prefs.pinkCaptainMode !== true) {
+              console.log(`Driver ${driver._id} skipped - no pink captain mode`.red);
+              continue;
+            }
+            if (driver.gender && driver.gender.toLowerCase() !== 'female') {
+              console.log(`Driver ${driver._id} skipped - not female`.red);
+              continue;
+            }
+          }
+          if (helper === true) {
+            const prefs = driver.driverSettings?.ridePreferences;
+            if (!prefs || prefs.helpers !== true) {
+              console.log(`Driver ${driver._id} skipped - no helper preference`.red);
+              continue;
+            }
+          }
+          
+          const room = `driver_${driver._id}`;
+          console.log(`Sending booking request to room: ${room}`.green);
+          io.to(room).emit('new_booking_request', requestPayload);
+          notified++;
+        }
+      }
+
+      console.log(`Booking request ${requestPayload.requestId} sent to ${notified} drivers`.green);
+
+      // Ack to customer
+      if (typeof ack === 'function') {
+        ack({ ok: true, requestId: requestPayload.requestId, driversNotified: notified });
+      }
+
+      // Also notify the customer that request has been created
+      socket.emit('booking_request_created', {
+        requestId: requestPayload.requestId,
+        message: 'Booking request created successfully',
+        driversFound: notified
+      });
+
+    } catch (error) {
+      console.error('Error in send_booking_request:', error);
+      const err = { message: 'Failed to send booking request' };
+      socket.emit('error', err);
       if (typeof ack === 'function') ack({ ok: false, error: err.message });
     }
   });

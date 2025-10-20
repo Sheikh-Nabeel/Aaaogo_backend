@@ -2750,6 +2750,19 @@ const updateRidePreferences = asyncHandler(async (req, res) => {
   });
 });
 
+// Helper: get admin-configured nearby radius (km)
+const getAdminDriverSearchRadius = async (serviceType, fallback = 5) => {
+  try {
+    const config = await PricingConfig.findOne({ isActive: true, serviceType });
+    if (config && typeof config.driverSearchRadiusKm === 'number' && config.driverSearchRadiusKm > 0) {
+      return config.driverSearchRadiusKm;
+    }
+  } catch (e) {
+    console.warn('Could not load driverSearchRadiusKm from PricingConfig:', e.message);
+  }
+  return fallback;
+};
+
 // Send booking request to qualified drivers (REST API endpoint)
 const sendBookingRequestToQualifiedDrivers = asyncHandler(async (req, res) => {
   const {
@@ -2757,10 +2770,12 @@ const sendBookingRequestToQualifiedDrivers = asyncHandler(async (req, res) => {
     dropoffLocation,
     serviceType,
     vehicleType,
-    driverPreference = 'any',
+    driverPreference = 'nearby',
+    pinnedDriverId,
     estimatedFare,
     paymentMethod,
-    notes
+    notes,
+    helper = false
   } = req.body;
   const userId = req.user._id;
 
@@ -2787,8 +2802,54 @@ const sendBookingRequestToQualifiedDrivers = asyncHandler(async (req, res) => {
   }
 
   try {
-    // Get qualified drivers using the same logic as socket handler
-    const maxRadius = driverPreference === 'pink_captain' ? 50 : 10;
+    // Handle pinned/specific driver case
+    if (driverPreference === 'pinned') {
+      if (!pinnedDriverId) {
+        return res.status(400).json({ message: 'pinnedDriverId is required for pinned preference', token: req.cookies.token });
+      }
+
+      const driver = await User.findOne({ _id: pinnedDriverId, role: 'driver', kycLevel: 2, kycStatus: 'approved', isActive: true, driverStatus: 'online' });
+      if (!driver) {
+        return res.status(404).json({ message: 'Pinned driver not found or not eligible', token: req.cookies.token });
+      }
+
+      const vehicle = await Vehicle.findOne({ userId: driver._id, serviceType, vehicleType, isActive: true });
+      if (!vehicle) {
+        return res.status(400).json({ message: 'Pinned driver does not have a matching vehicle for this service', token: req.cookies.token });
+      }
+
+      const bookingRequest = {
+        requestId: new Date().getTime().toString(),
+        userId: userId,
+        userInfo: {
+          name: req.user.name,
+          email: req.user.email,
+          phone: req.user.phone
+        },
+        pickupLocation,
+        dropoffLocation,
+        serviceType,
+        vehicleType,
+        driverPreference,
+        estimatedFare,
+        paymentMethod,
+        notes,
+        timestamp: new Date(),
+        status: 'pending'
+      };
+
+      const io = req.app.get('io');
+      if (io) {
+        io.to(`driver_${driver._id}`).emit('new_booking_request', bookingRequest);
+      }
+
+      const token = jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRY });
+      res.cookie('token', token, { httpOnly: true, maxAge: 3600000 });
+      return res.status(200).json({ success: true, message: 'Booking request sent to pinned driver', requestId: bookingRequest.requestId, driversNotified: 1, qualifiedDriversCount: 1, token });
+    }
+
+    // Nearby logic with admin-configured radius
+    const maxRadius = await getAdminDriverSearchRadius(serviceType, 5);
     
     // Find vehicles that match the service and vehicle type
     const matchingVehicles = await Vehicle.find({
@@ -2841,17 +2902,25 @@ const sendBookingRequestToQualifiedDrivers = asyncHandler(async (req, res) => {
       }
     }
     
-    // Filter drivers based on preference
+    // Filter drivers based on preference and helper requirement
     let filteredDrivers = driversWithDistance;
     if (driverPreference === 'pink_captain') {
       console.log('Filtering Pink Captain drivers based on preferences...');
       
       filteredDrivers = driversWithDistance.filter(driver => {
         const driverPrefs = driver.driverSettings?.ridePreferences;
-        return driverPrefs && driverPrefs.pinkCaptainMode;
+        return driverPrefs && driverPrefs.pinkCaptainMode === true;
       });
       
       console.log(`Filtered to ${filteredDrivers.length} Pink Captain drivers`);
+    }
+
+    if (helper === true) {
+      filteredDrivers = filteredDrivers.filter(driver => {
+        const prefs = driver.driverSettings?.ridePreferences;
+        return prefs && prefs.helpers === true;
+      });
+      console.log(`Helper requested - filtered to ${filteredDrivers.length} drivers with helpers`);
     }
     
     // Sort by distance
